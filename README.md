@@ -44,7 +44,8 @@ keyword    ::= 'null'
              | 'or'
 ident      ::= letter ('-' | '_' | letter | digit)*
 letter     ::= [a-zA-Z]
-prefixop   ::= '>'
+prefixop   ::= '-'
+             | '>'
              | '<'
              | '>='
              | '<='
@@ -53,13 +54,14 @@ prefixop   ::= '>'
 infixop    ::= 'and' | 'or'
 null       ::= 'null'
 boolean    ::= 'true' | 'false'
-number     ::= '-'? ('0' | nonzero digit*)
+number     ::= digit+
                (. digit+)?
                (('e' | 'E') ('+' | '-')? digit+)?
 digit      ::= [0-9]
 nonzero    ::= digit - '0'
 regex      ::= '/' ('\/' | char - '/')+ '/'
 string     ::= '"' ('\"' | char - '"')* '"'
+             | "'" ("\'" | char - "'")* "'"
 char       ::= #x9
              | [#x20-#xD7FF]
              | [#xE000-#xFFFD]
