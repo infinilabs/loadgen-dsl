@@ -24,3 +24,7 @@ Session.vim
 
 ## Misc
 foo.*
+
+## Rust
+/target
+/Cargo.lock
