@@ -1,4 +1,4 @@
-use crate::cursor::Span;
+use crate::lexer::Span;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
