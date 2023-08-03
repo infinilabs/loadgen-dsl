@@ -27,6 +27,33 @@ define_pattern!(whitespace, b'\x09' | b'\x0A' | b'\x0D' | b'\x20');
 define_pattern!(digit, b'0'..=b'9');
 define_pattern!(letter, b'a'..=b'z' | b'A' ..=b'Z');
 define_pattern!(ident, b'_' | b'-' | letter!() | digit!());
+define_pattern!(
+    punct,
+    b'!' | b'#'
+        | b'$'
+        | b'%'
+        | b'&'
+        | b'*'
+        | b'+'
+        | b','
+        | b'-'
+        | b'.'
+        | b'/'
+        | b':'
+        | b';'
+        | b'<'
+        | b'='
+        | b'>'
+        | b'?'
+        | b'@'
+        | b'['
+        | b']'
+        | b'^'
+        | b'{'
+        | b'}'
+        | b'|'
+        | b'~'
+);
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
@@ -50,12 +77,13 @@ impl<'a> Lexer<'a> {
                     self.skip_line();
                     continue;
                 }
+                ch @ (b'"' | b'\'') => self.next_string(ch),
+                ch @ digit!() => self.next_number(ch),
                 letter!() => {
                     self.cur.skip_while(ident);
                     Ok(TokenKind::Ident)
                 }
-                ch @ (b'"' | b'\'' | b'/') => self.next_quoted(ch),
-                ch @ digit!() => self.next_number(ch),
+                punct!() => Ok(TokenKind::Punct),
                 EOF if self.cur.is_eof() => Ok(TokenKind::Eof),
                 _ => todo!(),
             };
@@ -112,7 +140,7 @@ impl<'a> Lexer<'a> {
         Ok(TokenKind::Number)
     }
 
-    fn next_quoted(&mut self, quote: u8) -> Result<TokenKind> {
+    fn next_string(&mut self, quote: u8) -> Result<TokenKind> {
         loop {
             match self.cur.next() {
                 b'\\' => self.cur.advance(),
@@ -121,11 +149,7 @@ impl<'a> Lexer<'a> {
                 _ => {}
             }
         }
-        Ok(match quote {
-            b'\'' | b'"' => TokenKind::String,
-            b'/' => TokenKind::Regexp,
-            _ => unreachable!(),
-        })
+        Ok(TokenKind::String)
     }
 }
 
