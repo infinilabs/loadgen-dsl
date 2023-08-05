@@ -48,7 +48,7 @@ define_pattern!(
         | '~'
 );
 
-pub(super) type LexResult<T = Token> = (T, Option<Error>);
+pub(super) type LexResult<T = TokenKind> = (T, Option<Error>);
 
 pub(super) struct Lexer<'a> {
     src: &'a str,
@@ -126,7 +126,7 @@ impl<'a> Lexer<'a> {
         };
     }
 
-    fn next_ident(&mut self, _start: char) -> Token {
+    fn next_ident(&mut self, _start: char) -> TokenKind {
         self.skip_while(ident_body);
         Ident {
             value: self.source().into(),
@@ -135,7 +135,7 @@ impl<'a> Lexer<'a> {
         .into()
     }
 
-    fn next_number(&mut self, _leading: char) -> Token {
+    fn next_number(&mut self, _leading: char) -> TokenKind {
         debug_assert!(digit(_leading));
         // leading digits
         self.skip_digits();
@@ -161,7 +161,7 @@ impl<'a> Lexer<'a> {
         .into()
     }
 
-    fn next_quoted(&mut self, quote: char) -> Token {
+    fn next_quoted(&mut self, quote: char) -> TokenKind {
         debug_assert!(matches!(quote, '"' | '\'' | '/'));
         loop {
             // TODO: handle escape characters
@@ -182,7 +182,7 @@ impl<'a> Lexer<'a> {
         .into()
     }
 
-    fn next_regexp(&mut self, quote: char) -> Token {
+    fn next_regexp(&mut self, quote: char) -> TokenKind {
         debug_assert!(matches!(quote, '/'));
         loop {
             match self.cur.next() {

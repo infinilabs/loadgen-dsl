@@ -4,17 +4,41 @@ use buffer::*;
 mod lexer;
 use lexer::*;
 
-use crate::{
-    error::{Error, ErrorKind, ErrorKind::*, Result},
-    Parse, Peek,
-};
+use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
 
-const DUMMY: Token = Token::Eof(Eof {
+const DUMMY: TokenKind = TokenKind::Eof(Eof {
     span: Span {
         start: u32::MAX,
         end: u32::MAX,
     },
 });
+
+pub trait Token: Parse {
+    fn display() -> &'static str;
+    fn peek(cur: Cursor) -> bool;
+}
+
+pub trait Peek: Sized {
+    fn peek(&self, cur: Cursor) -> bool;
+
+    fn and<T: Peek>(self, and: T) -> And<Self, T> {
+        And { a: self, b: and }
+    }
+
+    fn or<T: Peek>(self, or: T) -> Or<Self, T> {
+        Or { a: self, b: or }
+    }
+}
+
+impl Peek for fn(Cursor) -> bool {
+    fn peek(&self, cur: Cursor) -> bool {
+        (self)(cur)
+    }
+}
+
+pub trait Parse: Sized {
+    fn parse(parser: &mut Parser) -> Result<Self>;
+}
 
 /// A region of source code.
 #[derive(Clone, Copy, Debug)]
@@ -42,7 +66,7 @@ impl<'a> Parser<'a> {
         self.buf.peek(|buf| f.peek(Cursor { buf }))
     }
 
-    fn parse_token(&mut self) -> Result<Token> {
+    fn parse_token(&mut self) -> Result<TokenKind> {
         let (token, result) = if self.buf.is_empty() {
             self.buf.lexer.parse()
         } else {
@@ -53,7 +77,7 @@ impl<'a> Parser<'a> {
 
     fn parse_token_as<T>(&mut self) -> Result<T>
     where
-        T: crate::Token + TryFrom<Token, Error = Token>,
+        T: Token + TryFrom<TokenKind, Error = TokenKind>,
     {
         T::try_from(self.parse_token()?).map_err(|t| Error::unexpected(t.span(), T::display()))
     }
@@ -66,7 +90,7 @@ pub struct Cursor<'a, 'b> {
 impl<'a, 'b> Cursor<'a, 'b> {
     fn get_token_as<T>(&self) -> Option<&T>
     where
-        for<'t> &'t T: TryFrom<&'t Token>,
+        for<'t> &'t T: TryFrom<&'t TokenKind>,
     {
         self.buf.get_token().try_into().ok()
     }
@@ -155,13 +179,18 @@ macro_rules! define_token {
         })*
     };
 }
-macro_rules! impl_token {
-    ($name:ident $display:literal) => {
+macro_rules! impl_peek {
+    ($name:ident) => {
         #[allow(non_snake_case)]
         pub fn $name(cur: Cursor) -> bool {
-            <$name as crate::Token>::peek(cur)
+            <$name as Token>::peek(cur)
         }
-        impl crate::Token for $name {
+    };
+}
+macro_rules! impl_token {
+    ($name:ident $display:literal) => {
+        impl_peek!($name);
+        impl Token for $name {
             fn display() -> &'static str {
                 $display
             }
@@ -177,7 +206,7 @@ macro_rules! impl_token {
     };
 }
 define_token! {
-    enum Token {
+    enum TokenKind {
         Ident    => Ident,
         Number   => LitNumber,
         String   => LitString,
@@ -236,7 +265,9 @@ pub struct LitRegexp {
     value: Box<str>,
 }
 
-impl crate::Token for LitRegexp {
+impl_peek!(LitRegexp);
+
+impl Token for LitRegexp {
     fn display() -> &'static str {
         "literal regular expression"
     }
@@ -280,8 +311,8 @@ struct Eof {
 }
 
 pub struct And<A, B> {
-    pub(crate) a: A,
-    pub(crate) b: B,
+    a: A,
+    b: B,
 }
 
 impl<A, B> Peek for And<A, B>
@@ -299,8 +330,8 @@ where
 }
 
 pub struct Or<A, B> {
-    pub(crate) a: A,
-    pub(crate) b: B,
+    a: A,
+    b: B,
 }
 
 impl<A, B> Peek for Or<A, B>

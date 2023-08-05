@@ -55,7 +55,7 @@ impl<'a> ParserBuffer<'a> {
         std::mem::replace(&mut self.buf[head as usize], (DUMMY, None))
     }
 
-    pub fn get_token(&self) -> &Token {
+    pub fn get_token(&self) -> &TokenKind {
         &self.buf[self.head as usize].0
     }
 }
