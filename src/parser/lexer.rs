@@ -227,28 +227,21 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_if(&mut self, p: fn(char) -> bool) -> bool {
-        if p(self.cur.next()) {
+        if p(self.cur.peek()) {
+            self.cur.advance();
             true
         } else {
-            self.cur.back();
             false
         }
     }
 
     fn skip_while(&mut self, p: fn(char) -> bool) -> bool {
-        if !p(self.cur.next()) {
-            self.cur.back();
-            return false;
+        if self.skip_if(p) {
+            while !self.cur.is_eof() && self.skip_if(p) {}
+            true
+        } else {
+            false
         }
-        loop {
-            if self.cur.is_eof() {
-                break;
-            } else if !p(self.cur.next()) {
-                self.cur.back();
-                break;
-            }
-        }
-        true
     }
 
     fn skip_line(&mut self) {
@@ -297,16 +290,14 @@ impl<'a> Cursor<'a> {
         self.iter.next().unwrap_or(EOF)
     }
 
+    /// Looks at the next character in the stream.
+    pub fn peek(&mut self) -> char {
+        self.iter.clone().next().unwrap_or(EOF)
+    }
+
     /// Moves the cursor to the specifed position.
     pub fn seek(&mut self, pos: u32) {
         self.iter = self.src[pos as usize..].chars();
-    }
-
-    /// Moves the cursor to the previous character.
-    pub fn back(&mut self) {
-        let mut iter = self.src[..self.pos() as usize].chars();
-        iter.next_back();
-        self.iter = self.src[iter.as_str().len()..].chars();
     }
 
     /// Moves the cursor to the next character.
@@ -319,17 +310,78 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
 
+    macro_rules! lex_err {
+        ($res:expr, $(($start:literal, $end:literal) $err:pat),+ $(,)?) => {{
+            let (_, result) = $res;
+            let mut err = result.unwrap().into_iter();
+            $({
+                let (span, e) = err.next().unwrap();
+                assert_eq!((span.start, span.end), ($start, $end));
+                assert!(matches!(e, $err));
+            })*
+        }};
+    }
+
+    macro_rules! lex_ok {
+        ($res:expr, ($start:literal, $end:literal) $ty:ident) => {{
+            let (token, result) = $res;
+            let span = token.span();
+            assert_eq!((span.start, span.end), ($start, $end));
+            assert!(result.is_none());
+            <$ty>::try_from(token).unwrap()
+        }};
+    }
+
+    macro_rules! lex_ident_eq {
+        ($res:expr, $span:tt $val:literal) => {
+            let token = lex_ok!($res, $span Ident);
+            assert_eq!(&*token.value, $val);
+        };
+    }
+
+    macro_rules! lex_number_eq {
+        ($res:expr, ($start:literal, $end:literal) $val:literal) => {
+            let token = lex_ok!($res, ($start, $end) LitNumber);
+            assert_eq!(token.value, $val);
+        };
+    }
+
     #[test]
     fn cursor() {
         let mut cursor = Cursor::new("xy");
         assert_eq!(cursor.pos(), 0);
         assert_eq!(cursor.next(), 'x');
         assert_eq!(cursor.pos(), 1);
+        assert_eq!(cursor.peek(), 'y');
+        assert_eq!(cursor.pos(), 1);
         assert_eq!(cursor.next(), 'y');
         assert_eq!(cursor.next(), EOF);
+        assert_eq!(cursor.next(), EOF);
         assert_eq!(cursor.pos(), 2);
-        cursor.back();
-        assert_eq!(cursor.next(), 'y');
         assert!(cursor.is_eof());
+    }
+
+    #[test]
+    fn lex_ident() {
+        let mut lexer = Lexer::new("var_1 _var2 var-3");
+        lex_ident_eq!(lexer.parse(), (0, 5) "var_1");
+        lex_ident_eq!(lexer.parse(), (6, 11) "_var2");
+        lex_ident_eq!(lexer.parse(), (12, 17) "var-3");
+    }
+
+    #[test]
+    fn lex_number() {
+        let mut lexer = Lexer::new("0 001 2.3 4E5 6.7E-8 9.1E+2");
+        lex_number_eq!(lexer.parse(), (0, 1) 0.0);
+        lex_number_eq!(lexer.parse(), (2, 5) 1.0);
+        lex_number_eq!(lexer.parse(), (6, 9) 2.3);
+        lex_number_eq!(lexer.parse(), (10, 13) 4E5);
+        lex_number_eq!(lexer.parse(), (14, 20) 6.7E-8);
+        lex_number_eq!(lexer.parse(), (21, 27) 9.1E+2);
+        let mut lexer = Lexer::new("0. 0E 0.E 0.E+");
+        lex_err!(lexer.parse(), (0, 2) MissingDecimal);
+        lex_err!(lexer.parse(), (3, 5) MissingExponent);
+        lex_err!(lexer.parse(), (6, 8) MissingDecimal, (6, 9) MissingExponent);
+        lex_err!(lexer.parse(), (10, 12) MissingDecimal, (10, 14) MissingExponent);
     }
 }

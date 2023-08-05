@@ -26,6 +26,11 @@ impl Error {
     pub fn combine(&mut self, err: Self) {
         self.inner.extend(err.inner);
     }
+
+    #[cfg(test)]
+    pub(crate) fn into_iter(self) -> impl Iterator<Item = (Span, ErrorKind)> {
+        self.inner.into_iter().map(|msg| (msg.span, msg.kind))
+    }
 }
 
 #[derive(Debug)]
