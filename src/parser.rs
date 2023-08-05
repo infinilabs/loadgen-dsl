@@ -58,6 +58,10 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse<T: Parse>(&mut self) -> Result<T> {
+        T::parse(self)
+    }
+
     pub fn peek<T: Peek>(&mut self, f: T) -> bool {
         if self.buf.is_empty() {
             self.buf.clear();
