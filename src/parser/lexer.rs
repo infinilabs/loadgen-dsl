@@ -53,8 +53,11 @@ pub(super) type LexResult<T = Token> = (T, Option<Error>);
 pub(super) struct Lexer<'a> {
     src: &'a str,
     cur: Cursor<'a>,
+    /// Starting position in a parse.
     start: u32,
+    /// Characters buffered in a parse.
     buf: String,
+    /// Possbile errors in a parse.
     err: Option<Error>,
     flag: u8,
 }
@@ -77,32 +80,27 @@ impl<'a> Lexer<'a> {
 
     pub fn parse(&mut self) -> LexResult {
         loop {
+            // buffer/error should be taken in the last parse.
             debug_assert!(self.buf.is_empty());
             debug_assert!(self.err.is_none());
             self.start = self.pos();
-            let token = match self.cur.next() {
+            let ch = self.cur.next();
+            let token = match ch {
                 // skip whitespace
                 whitespace!() => {
                     self.skip_whitespace();
                     continue;
                 }
-                ident_start!() => {
-                    self.skip_while(ident_body);
-                    Ident {
-                        value: self.source().into(),
-                        span: self.span(),
-                    }
-                    .into()
-                }
-                ch @ digit!() => self.next_number(ch),
-                ch @ ('"' | '\'') => self.next_quoted(ch),
+                ident_start!() => self.next_ident(ch),
+                digit!() => self.next_number(ch),
+                '"' | '\'' => self.next_quoted(ch),
                 // skip comment
                 '/' if self.skip_if(|ch| ch == '/') => {
                     self.skip_line();
                     continue;
                 }
-                ch @ '/' if self.flag & Self::ALLOW_REGEXP != 0 => self.next_regexp(ch),
-                ch @ punct!() => Punct {
+                '/' if self.flag & Self::ALLOW_REGEXP != 0 => self.next_regexp(ch),
+                punct!() => Punct {
                     value: ch,
                     span: self.span(),
                     joint: !self.cur.is_eof() && !self.skip_if(whitespace),
@@ -112,29 +110,40 @@ impl<'a> Lexer<'a> {
                 _ => Eof { span: self.span() }.into(),
             };
             self.flag = 0;
-            break (token, self.err.take());
+            break (token, self.take_error());
         }
     }
 
+    /// Changes the runtime behavior.
     pub fn set_flag(&mut self, flag: u8) {
         self.flag |= flag;
     }
 
+    /// Moves the cursor to the specified position.
     pub fn seek(&mut self, pos: u32) {
         self.cur = Cursor {
             iter: self.src[pos as usize..].chars(),
         };
     }
 
+    fn next_ident(&mut self, _start: char) -> Token {
+        self.skip_while(ident_body);
+        Ident {
+            value: self.source().into(),
+            span: self.span(),
+        }
+        .into()
+    }
+
     fn next_number(&mut self, _leading: char) -> Token {
         debug_assert!(digit(_leading));
         // leading digits
         self.skip_digits();
-        // decimal part
+        // decimal digits
         if self.skip_if(|ch| ch == '.') && !self.skip_while(digit) {
             self.error(self.span(), MissingDecimal);
         }
-        // exponent part
+        // exponent digits
         if self.skip_if(|ch| matches!(ch, 'e' | 'E')) {
             self.skip_if(|ch| matches!(ch, '+' | '-'));
             if !self.skip_while(digit) {
@@ -202,12 +211,17 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn take_error(&mut self) -> Option<Error> {
+        self.err.take()
+    }
+
     fn take_buf(&mut self) -> Box<str> {
         let buf = Box::from(&*self.buf);
         self.buf.clear();
         buf
     }
 
+    /// Returns the byte index of the next character.
     fn pos(&self) -> u32 {
         (self.src.len() - self.cur.len()) as u32
     }
@@ -233,20 +247,19 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_while(&mut self, p: fn(char) -> bool) -> bool {
-        if p(self.cur.next()) {
-            loop {
-                if self.cur.is_eof() {
-                    break;
-                } else if !p(self.cur.next()) {
-                    self.cur.back();
-                    break;
-                }
-            }
-            true
-        } else {
+        if !p(self.cur.next()) {
             self.cur.back();
-            false
+            return false;
         }
+        loop {
+            if self.cur.is_eof() {
+                break;
+            } else if !p(self.cur.next()) {
+                self.cur.back();
+                break;
+            }
+        }
+        true
     }
 
     fn skip_line(&mut self) {
