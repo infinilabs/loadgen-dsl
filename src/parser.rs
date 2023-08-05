@@ -135,10 +135,10 @@ impl<'a, 'b> Cursor<'a, 'b> {
 }
 
 macro_rules! define_token {
-    (enum $name:ident {
+    ($(#[$attr:meta])* enum $name:ident {
         $($variant:ident => $ty:ident,)*
     }) => {
-        enum $name { $($variant($ty),)* }
+        $(#[$attr])* enum $name { $($variant($ty),)* }
 
         impl $name {
             pub fn span(&self) -> Span {
@@ -206,6 +206,7 @@ macro_rules! impl_token {
     };
 }
 define_token! {
+    #[derive(Debug)]
     enum TokenKind {
         Ident    => Ident,
         Number   => LitNumber,
@@ -292,6 +293,7 @@ impl LitRegexp {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Punct {
     span: Span,
     value: char,
@@ -300,12 +302,23 @@ pub struct Punct {
 
 impl_token!(Punct "punctuation");
 
-#[derive(Debug, Copy, Clone)]
+impl Punct {
+    pub fn value(&self) -> char {
+        self.value
+    }
+
+    /// Returns whether this punctuation is immediately followed by another [`Token`].
+    pub fn is_joint(&self) -> bool {
+        self.joint
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Unknown {
     span: Span,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct Eof {
     span: Span,
 }
