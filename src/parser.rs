@@ -19,7 +19,7 @@ pub trait Token: Parse {
 }
 
 pub trait Peek: Sized {
-    fn peek(&self, cur: Cursor) -> bool;
+    fn peek(self, cur: Cursor) -> bool;
 
     fn and<T: Peek>(self, and: T) -> And<Self, T> {
         And { a: self, b: and }
@@ -30,8 +30,11 @@ pub trait Peek: Sized {
     }
 }
 
-impl Peek for fn(Cursor) -> bool {
-    fn peek(&self, cur: Cursor) -> bool {
+impl<F> Peek for F
+where
+    F: FnOnce(Cursor) -> bool,
+{
+    fn peek(self, cur: Cursor) -> bool {
         (self)(cur)
     }
 }
@@ -341,7 +344,7 @@ where
     A: Peek,
     B: Peek,
 {
-    fn peek(&self, cur: Cursor) -> bool {
+    fn peek(self, cur: Cursor) -> bool {
         let Cursor { buf } = cur;
         self.a.peek(Cursor { buf }) && {
             buf.advance();
@@ -360,7 +363,7 @@ where
     A: Peek,
     B: Peek,
 {
-    fn peek(&self, cur: Cursor) -> bool {
+    fn peek(self, cur: Cursor) -> bool {
         let Cursor { buf } = cur;
         buf.peek(|buf| self.a.peek(Cursor { buf })) || self.b.peek(Cursor { buf })
     }
