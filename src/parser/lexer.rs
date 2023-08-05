@@ -1,6 +1,6 @@
 use super::*;
 
-pub const EOF: char = '\0';
+const EOF: char = '\0';
 
 macro_rules! define_pattern {
     ($name:ident, $pat:pat) => {
@@ -51,7 +51,6 @@ define_pattern!(
 pub(super) type LexResult<T = TokenKind> = (T, Option<Error>);
 
 pub(super) struct Lexer<'a> {
-    src: &'a str,
     cur: Cursor<'a>,
     /// Starting position in a parse.
     start: u32,
@@ -67,10 +66,7 @@ impl<'a> Lexer<'a> {
 
     pub fn new(source: &'a str) -> Self {
         Self {
-            src: source,
-            cur: Cursor {
-                iter: source.chars(),
-            },
+            cur: Cursor::new(source),
             start: 0,
             buf: String::new(),
             err: None,
@@ -83,7 +79,7 @@ impl<'a> Lexer<'a> {
             // buffer/error should be taken in the last parse.
             debug_assert!(self.buf.is_empty());
             debug_assert!(self.err.is_none());
-            self.start = self.pos();
+            self.start = self.cur.pos();
             let ch = self.cur.next();
             let token = match ch {
                 // skip whitespace
@@ -121,9 +117,7 @@ impl<'a> Lexer<'a> {
 
     /// Moves the cursor to the specified position.
     pub fn seek(&mut self, pos: u32) {
-        self.cur = Cursor {
-            iter: self.src[pos as usize..].chars(),
-        };
+        self.cur.seek(pos);
     }
 
     fn next_ident(&mut self, _start: char) -> TokenKind {
@@ -221,20 +215,15 @@ impl<'a> Lexer<'a> {
         buf
     }
 
-    /// Returns the byte index of the next character.
-    fn pos(&self) -> u32 {
-        (self.src.len() - self.cur.len()) as u32
-    }
-
     fn span(&self) -> Span {
         Span {
             start: self.start,
-            end: self.pos(),
+            end: self.cur.pos(),
         }
     }
 
     fn source(&self) -> &str {
-        &self.src[self.start as usize..self.pos() as usize]
+        self.cur.fetch(self.start, self.cur.pos())
     }
 
     fn skip_if(&mut self, p: fn(char) -> bool) -> bool {
@@ -276,18 +265,31 @@ impl<'a> Lexer<'a> {
 }
 
 struct Cursor<'a> {
+    src: &'a str,
     iter: std::str::Chars<'a>,
 }
 
 impl<'a> Cursor<'a> {
-    /// Checks whether this cursor reaches EOF.
-    pub fn is_eof(&self) -> bool {
-        self.len() == 0
+    pub fn new(source: &'a str) -> Self {
+        Self {
+            src: source,
+            iter: source.chars(),
+        }
     }
 
-    /// Returns the length of remaining characters.
-    pub fn len(&self) -> usize {
-        self.iter.as_str().len()
+    /// Checks whether this cursor reaches EOF.
+    pub fn is_eof(&self) -> bool {
+        self.iter.as_str().is_empty()
+    }
+
+    /// Returns the byte index of the next character.
+    pub fn pos(&self) -> u32 {
+        (self.src.len() - self.iter.as_str().len()) as u32
+    }
+
+    /// Returns the source in the given [`Span`].
+    pub fn fetch(&self, start: u32, end: u32) -> &str {
+        &self.src[start as usize..end as usize]
     }
 
     /// Advances and returns the next character. [`EOF`] is returned when reaches EOF.
@@ -295,13 +297,39 @@ impl<'a> Cursor<'a> {
         self.iter.next().unwrap_or(EOF)
     }
 
+    /// Moves the cursor to the specifed position.
+    pub fn seek(&mut self, pos: u32) {
+        self.iter = self.src[pos as usize..].chars();
+    }
+
     /// Moves the cursor to the previous character.
     pub fn back(&mut self) {
-        self.iter.next_back();
+        let mut iter = self.src[..self.pos() as usize].chars();
+        iter.next_back();
+        self.iter = self.src[iter.as_str().len()..].chars();
     }
 
     /// Moves the cursor to the next character.
     pub fn advance(&mut self) {
         self.iter.next();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor() {
+        let mut cursor = Cursor::new("xy");
+        assert_eq!(cursor.pos(), 0);
+        assert_eq!(cursor.next(), 'x');
+        assert_eq!(cursor.pos(), 1);
+        assert_eq!(cursor.next(), 'y');
+        assert_eq!(cursor.next(), EOF);
+        assert_eq!(cursor.pos(), 2);
+        cursor.back();
+        assert_eq!(cursor.next(), 'y');
+        assert!(cursor.is_eof());
     }
 }
