@@ -58,6 +58,10 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty() && self.buf.lexer.is_empty()
+    }
+
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
         T::parse(self)
     }

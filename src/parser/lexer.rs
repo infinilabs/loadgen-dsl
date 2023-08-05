@@ -120,6 +120,10 @@ impl<'a> Lexer<'a> {
         self.cur.seek(pos);
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.cur.is_eof()
+    }
+
     fn next_ident(&mut self, _start: char) -> TokenKind {
         self.skip_while(ident_body);
         Ident {
