@@ -16,7 +16,7 @@ macro_rules! define_pattern {
         }
     };
 }
-define_pattern!(whitespace, '\x09' | '\x0A' | '\x0D' | '\x20');
+define_pattern!(whitespace, '\t' | '\n' | '\r' | ' ');
 define_pattern!(digit, '0'..='9');
 define_pattern!(ident_start, '_' | 'a'..='z' | 'A' ..='Z');
 define_pattern!(ident_body, ident_start!() | '-' | digit!());
@@ -121,7 +121,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Changes the runtime behavior.
+    /// Changes the runtime behavior of the next parse.
     pub fn set_flag(&mut self, flag: u8) {
         self.flag |= flag;
     }
@@ -177,6 +177,7 @@ impl<'a> Lexer<'a> {
                 '\\' => {
                     let start = self.cur.pos();
                     let ch = self.cur.next();
+                    // TODO: dedent, escape `\n`
                     match ch {
                         'b' => self.buf.push('\x08'),
                         'f' => self.buf.push('\x0c'),
@@ -340,21 +341,37 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
 
+    macro_rules! assert_matches {
+        ($left:expr, $(|)? $( $pattern:pat_param )|+ $( if $guard: expr )? $(,)?) => {
+            match $left {
+                $( $pattern )|+ $( if $guard )? => {}
+                ref left => {
+                    panic!(
+                        "assertion failed: `(left matches right)`\n left: `{}`\nright: `{:?}`",
+                        stringify!($($pattern)|+ $(if $guard)?),
+                        left,
+                    )
+                }
+            }
+        };
+    }
+
     macro_rules! lex_err {
-        ($res:expr, $(($start:literal, $end:literal) $err:pat),+ $(,)?) => {{
-            let (_, result) = $res;
+        ($lexer:expr, $(($start:expr, $end:expr) $err:pat),+ $(,)?) => {{
+            let (_, result) = $lexer.parse();
             let mut err = result.unwrap().into_iter();
             $({
                 let (span, e) = err.next().unwrap();
                 assert_eq!((span.start, span.end), ($start, $end));
-                assert!(matches!(e, $err));
+                assert_matches!(e, $err);
             })*
+            assert!(err.next().is_none());
         }};
     }
 
     macro_rules! lex_ok {
-        ($res:expr, ($start:literal, $end:literal) $ty:ident) => {{
-            let (token, result) = $res;
+        ($lexer:expr, ($start:expr, $end:expr) $ty:ident) => {{
+            let (token, result) = $lexer.parse();
             let span = token.span();
             assert_eq!((span.start, span.end), ($start, $end));
             assert!(result.is_none());
@@ -362,24 +379,64 @@ mod tests {
         }};
     }
 
-    macro_rules! lex_ident_eq {
-        ($res:expr, $span:tt $val:literal) => {
-            let token = lex_ok!($res, $span Ident);
+    macro_rules! lex_ident {
+        ($lexer:expr, $span:tt $val:literal) => {
+            let token = lex_ok!($lexer, $span Ident);
             assert_eq!(&*token.value, $val);
         };
     }
 
-    macro_rules! lex_number_eq {
-        ($res:expr, ($start:literal, $end:literal) $val:literal) => {
-            let token = lex_ok!($res, ($start, $end) LitNumber);
+    macro_rules! lex_number {
+        ($lexer:expr, ($start:expr, $end:expr) $val:literal) => {
+            let token = lex_ok!($lexer, ($start, $end) LitNumber);
             assert_eq!(token.value, $val);
         };
     }
 
-    macro_rules! lex_string_eq {
-        ($res:expr, ($start:literal, $end:literal) $val:literal) => {
-            let token = lex_ok!($res, ($start, $end) LitString);
+    macro_rules! lex_string {
+        ($lexer:expr, ($start:expr, $end:expr) $val:literal) => {
+            let token = lex_ok!($lexer, ($start, $end) LitString);
             assert_eq!(&*token.value, $val);
+        };
+    }
+
+    macro_rules! lex_regexp {
+        ($lexer:expr, ($start:expr, $end:expr) $val:literal) => {
+            $lexer.set_flag(Lexer::ALLOW_REGEXP);
+            let token = lex_ok!($lexer, ($start, $end) LitRegexp);
+            assert_eq!(&*token.value, $val);
+        };
+    }
+
+    macro_rules! lex_punct {
+        ($lexer:expr, ($start:expr, $end:expr) $ch:literal) => {
+            let token = lex_ok!($lexer, ($start, $end) Punct);
+            assert_eq!(token.value, $ch);
+            assert_eq!(token.joint, false);
+        };
+        ($lexer:expr, ($start:expr, $end:expr) $ch1:literal $($ch:literal)+) => {
+            let token = lex_ok!($lexer, ($start, $start + 1) Punct);
+            assert_eq!(token.value, $ch1);
+            assert_eq!(token.joint, true);
+            lex_punct!($lexer, ($start + 1, $end) $($ch)*);
+        };
+    }
+
+    macro_rules! lex_unknown {
+        ($lexer:expr, ($start:expr, $end:expr) $ch:literal) => {
+            let token = lex_ok!($lexer, ($start, $end) Unknown);
+            let chars = $lexer
+                .cur
+                .fetch(token.span.start, token.span.end)
+                .chars()
+                .collect::<Vec<_>>();
+            assert_eq!(&*chars, &[$ch]);
+        };
+    }
+
+    macro_rules! lex_eof {
+        ($lexer:expr, ($start:expr, $end:expr)) => {
+            lex_ok!($lexer, ($start, $end) Eof);
         };
     }
 
@@ -399,35 +456,98 @@ mod tests {
     }
 
     #[test]
+    fn lex_whitespace() {
+        let mut lexer = Lexer::new("abc\tdef\nghi\rjkl mno\t\n\r pqr");
+        lex_ident!(lexer, (0, 3) "abc");
+        lex_ident!(lexer, (4, 7) "def");
+        lex_ident!(lexer, (8, 11) "ghi");
+        lex_ident!(lexer, (12, 15) "jkl");
+        lex_ident!(lexer, (16, 19) "mno");
+        lex_ident!(lexer, (23, 26) "pqr");
+    }
+
+    #[test]
+    fn lex_comment() {
+        let s = ["abc", "// ignored", "def", "// also ignored"].join("\n");
+        let mut lexer = Lexer::new(&s);
+        lex_ident!(lexer, (0, 3) "abc");
+        lex_ident!(lexer, (15, 18) "def");
+        lex_eof!(lexer, (34, 34));
+    }
+
+    #[test]
     fn lex_ident() {
         let mut lexer = Lexer::new("var_1 _var2 var-3");
-        lex_ident_eq!(lexer.parse(), (0, 5) "var_1");
-        lex_ident_eq!(lexer.parse(), (6, 11) "_var2");
-        lex_ident_eq!(lexer.parse(), (12, 17) "var-3");
+        lex_ident!(lexer, (0, 5) "var_1");
+        lex_ident!(lexer, (6, 11) "_var2");
+        lex_ident!(lexer, (12, 17) "var-3");
     }
 
     #[test]
     fn lex_number() {
         let mut lexer = Lexer::new("0 001 2.3 4E5 6.7E-8 9.1E+2");
-        lex_number_eq!(lexer.parse(), (0, 1) 0.0);
-        lex_number_eq!(lexer.parse(), (2, 5) 1.0);
-        lex_number_eq!(lexer.parse(), (6, 9) 2.3);
-        lex_number_eq!(lexer.parse(), (10, 13) 4E5);
-        lex_number_eq!(lexer.parse(), (14, 20) 6.7E-8);
-        lex_number_eq!(lexer.parse(), (21, 27) 9.1E+2);
+        lex_number!(lexer, (0, 1) 0.0);
+        lex_number!(lexer, (2, 5) 1.0);
+        lex_number!(lexer, (6, 9) 2.3);
+        lex_number!(lexer, (10, 13) 4E5);
+        lex_number!(lexer, (14, 20) 6.7E-8);
+        lex_number!(lexer, (21, 27) 9.1E+2);
         let mut lexer = Lexer::new("0. 0E 0.E 0.E+");
-        lex_err!(lexer.parse(), (0, 2) MissingDecimal);
-        lex_err!(lexer.parse(), (3, 5) MissingExponent);
-        lex_err!(lexer.parse(), (6, 8) MissingDecimal, (6, 9) MissingExponent);
-        lex_err!(lexer.parse(), (10, 12) MissingDecimal, (10, 14) MissingExponent);
+        lex_err!(lexer, (0, 2) MissingDecimal);
+        lex_err!(lexer, (3, 5) MissingExponent);
+        lex_err!(lexer, (6, 8) MissingDecimal, (6, 9) MissingExponent);
+        lex_err!(lexer, (10, 12) MissingDecimal, (10, 14) MissingExponent);
     }
 
     #[test]
     fn lex_string() {
-        let mut lexer = Lexer::new(r#"'abc' "def" 'gh\'i' "j\"kl""#);
-        lex_string_eq!(lexer.parse(), (0, 5) "abc");
-        lex_string_eq!(lexer.parse(), (6, 11) "def");
-        lex_string_eq!(lexer.parse(), (12, 19) "gh\'i");
-        lex_string_eq!(lexer.parse(), (20, 27) "j\"kl");
+        let mut lexer = Lexer::new(r#"'abc' "def" 'gh\'i' "j\"kl" "\b\f\n\r\t""#);
+        lex_string!(lexer, (0, 5) "abc");
+        lex_string!(lexer, (6, 11) "def");
+        lex_string!(lexer, (12, 19) "gh\'i");
+        lex_string!(lexer, (20, 27) "j\"kl");
+        lex_string!(lexer, (28, 40) "\x08\x0c\n\r\t");
+        let mut lexer = Lexer::new(r#"'abc\de"#);
+        lex_err!(lexer, (4, 6) InvalidEscape('d'), (0, 7) UnterminatedString);
+        let mut lexer = Lexer::new(r#""abcd\e"#);
+        lex_err!(lexer, (5, 7) InvalidEscape('e'), (0, 7) UnterminatedString);
+    }
+
+    #[test]
+    fn lex_regexp() {
+        let mut lexer = Lexer::new(r"/abc\w\+/ /def\d\//");
+        lex_regexp!(lexer, (0, 9) r"abc\w\+");
+        lex_regexp!(lexer, (10, 19) r"def\d/");
+        let mut lexer = Lexer::new(r"/abcdef\/");
+        lexer.set_flag(Lexer::ALLOW_REGEXP);
+        lex_err!(lexer, (0, 9) UnterminatedRegexp);
+    }
+
+    #[test]
+    fn lex_punct() {
+        let mut lexer = Lexer::new(r"!#$ %&* +,- ./: ;<= >?@ []^ {}| ~");
+        lex_punct!(lexer, (0, 3) '!' '#' '$');
+        lex_punct!(lexer, (4, 7) '%' '&' '*');
+        lex_punct!(lexer, (8, 11) '+' ',' '-');
+        lex_punct!(lexer, (12, 15) '.' '/' ':');
+        lex_punct!(lexer, (16, 19) ';' '<' '=');
+        lex_punct!(lexer, (20, 23) '>' '?' '@');
+        lex_punct!(lexer, (24, 27) '[' ']' '^');
+        lex_punct!(lexer, (28, 31) '{' '}' '|');
+        lex_punct!(lexer, (32, 33) '~');
+    }
+
+    #[test]
+    fn lex_unknown() {
+        let mut lexer = Lexer::new("你好");
+        lex_unknown!(lexer, (0, 3) '你');
+        lex_unknown!(lexer, (3, 6) '好');
+    }
+
+    #[test]
+    fn lex_eof() {
+        let mut lexer = Lexer::new("abc");
+        lex_ident!(lexer, (0, 3) "abc");
+        lex_eof!(lexer, (3, 3));
     }
 }
