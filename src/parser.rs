@@ -246,7 +246,7 @@ impl Punct {
         self.value
     }
 
-    /// Returns whether this punctuation is immediately followed by another [`Token`].
+    /// Returns whether this punctuation is immediately followed by another [`Punct`].
     pub fn is_joint(&self) -> bool {
         self.joint
     }

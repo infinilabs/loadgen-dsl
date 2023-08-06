@@ -108,9 +108,9 @@ impl<'a> Lexer<'a> {
                 }
                 '/' if self.flag & Self::ALLOW_REGEXP != 0 => self.next_regexp(ch),
                 punct!() => Punct {
-                    value: ch,
                     span: self.span(),
-                    joint: !self.cur.is_eof() && !self.skip_if(whitespace),
+                    value: ch,
+                    joint: punct(self.cur.peek()),
                 }
                 .into(),
                 EOF if self.cur.is_eof() => Eof { span: self.span() }.into(),
@@ -138,8 +138,8 @@ impl<'a> Lexer<'a> {
     fn next_ident(&mut self, _start: char) -> TokenKind {
         self.skip_while(ident_body);
         Ident {
-            value: self.source().into(),
             span: self.span(),
+            value: self.source().into(),
         }
         .into()
     }
