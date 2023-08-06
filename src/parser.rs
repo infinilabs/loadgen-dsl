@@ -55,7 +55,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty() && self.buf.lexer.is_empty()
+        self.buf.lexer.is_empty()
+            && (self.buf.is_empty() || matches!(self.buf[0], TokenKind::Eof(_)))
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
@@ -63,17 +64,15 @@ impl<'a> Parser<'a> {
     }
 
     pub fn peek<T: Peek>(&mut self, f: T) -> bool {
-        self.buf.gc();
-        self.buf.advance();
-        self.buf.peek(|buf| f.peek(Cursor { buf }))
+        let mut head = 0;
+        f.peek(Cursor {
+            buf: &mut self.buf,
+            head: &mut head,
+        })
     }
 
     fn parse_token(&mut self) -> Result<TokenKind> {
-        let (token, result) = if self.buf.is_empty() {
-            self.buf.lexer.parse()
-        } else {
-            self.buf.pop()
-        };
+        let (token, result) = self.buf.next();
         result.map(Error::from).map(Err).unwrap_or(Ok(token))
     }
 
@@ -87,18 +86,25 @@ impl<'a> Parser<'a> {
 
 pub struct Cursor<'a, 'b> {
     buf: &'b mut ParserBuffer<'a>,
+    head: &'b mut usize,
 }
 
 impl<'a, 'b> Cursor<'a, 'b> {
+    fn get_token(&self) -> &TokenKind {
+        &self.buf[*self.head]
+    }
+
     fn get_token_as<T>(&self) -> Option<&T>
     where
         for<'t> &'t T: TryFrom<&'t TokenKind>,
     {
-        self.buf.get_token().try_into().ok()
+        self.get_token().try_into().ok()
     }
 
-    pub fn advance(&mut self) {
-        self.buf.advance();
+    pub fn advance(self) -> Self {
+        *self.head += 1;
+        self.buf.grow(*self.head);
+        Self { ..self }
     }
 
     pub fn get_ident(&self) -> Option<&Ident> {
@@ -117,11 +123,12 @@ impl<'a, 'b> Cursor<'a, 'b> {
         self.get_token_as()
     }
 
-    pub fn peek_punct(&mut self, display: &str) -> bool {
+    pub fn peek_punct(self, display: &str) -> bool {
+        let mut cur = self;
         let mut chars = display.chars();
         let Some(mut ch) = chars.next() else { return false };
         loop {
-            let Some(p) = self.get_punct() else { break };
+            let Some(p) = cur.get_punct() else { break };
             if p.value != ch {
                 break;
             }
@@ -129,7 +136,7 @@ impl<'a, 'b> Cursor<'a, 'b> {
             if !p.joint {
                 break;
             }
-            self.advance();
+            cur = cur.advance();
             ch = next;
         }
         false
@@ -142,14 +149,12 @@ macro_rules! define_token {
     }) => {
         $(#[$attr])* enum $name {
             $($variant($ty),)*
-            Empty,
         }
 
         impl $name {
             pub fn span(&self) -> Span {
                 match self {
                     $(Self::$variant(v) => v.span(),)*
-                    Self::Empty => unreachable!(),
                 }
             }
         }
@@ -338,11 +343,8 @@ where
     B: Peek,
 {
     fn peek(self, cur: Cursor) -> bool {
-        let Cursor { buf } = cur;
-        self.a.peek(Cursor { buf }) && {
-            buf.advance();
-            self.b.peek(Cursor { buf })
-        }
+        let Cursor { buf, head } = cur;
+        self.a.peek(Cursor { buf, head }) && self.b.peek(Cursor { buf, head }.advance())
     }
 }
 
@@ -357,7 +359,11 @@ where
     B: Peek,
 {
     fn peek(self, cur: Cursor) -> bool {
-        let Cursor { buf } = cur;
-        buf.peek(|buf| self.a.peek(Cursor { buf })) || self.b.peek(Cursor { buf })
+        let Cursor { buf, head } = cur;
+        let current_head = *head;
+        self.a.peek(Cursor { buf, head }) || {
+            *head = current_head;
+            self.b.peek(Cursor { buf, head })
+        }
     }
 }

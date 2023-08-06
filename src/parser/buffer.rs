@@ -1,67 +1,41 @@
+use std::{collections::VecDeque, ops};
+
 use super::*;
 
 pub(super) struct ParserBuffer<'a> {
     pub lexer: Lexer<'a>,
-    buf: Vec<LexResult>,
-    head: usize,
+    buf: VecDeque<LexResult>,
 }
 
 impl<'a> ParserBuffer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             lexer: Lexer::new(source),
-            buf: Vec::new(),
-            head: 0,
+            buf: VecDeque::new(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.head >= self.buf.len()
-    }
-
-    pub fn gc(&mut self) {
-        if self.is_empty() {
-            self.head = 0;
-            self.buf.clear();
-        } else if self.head > 12 {
-            debug_assert!(matches!(self.buf[self.head - 1].0, TokenKind::Empty));
-            self.buf.drain(..self.head);
-        }
+        self.buf.is_empty()
     }
 
     pub fn reset(&mut self) {
-        if !self.is_empty() {
-            self.lexer.seek(self.get_token().span().start);
-            self.buf.truncate(self.head);
-        }
+        self.buf.clear();
     }
 
-    pub fn advance(&mut self) {
-        debug_assert!(!self.is_empty());
-        if self.is_empty() {
-            self.push();
-        }
-        self.head += 1;
+    pub fn grow(&mut self, len: usize) {
+        self.buf.resize_with(len, || self.lexer.parse());
     }
 
-    pub fn peek(&mut self, f: impl FnOnce(&mut Self) -> bool) -> bool {
-        let head = self.head;
-        let peek = f(self);
-        self.head = head;
-        peek
+    pub fn next(&mut self) -> LexResult {
+        self.buf.pop_front().unwrap_or_else(|| self.lexer.parse())
     }
+}
 
-    pub fn push(&mut self) {
-        self.buf.push(self.lexer.parse());
-    }
+impl ops::Index<usize> for ParserBuffer<'_> {
+    type Output = TokenKind;
 
-    pub fn pop(&mut self) -> LexResult {
-        let head = self.head;
-        self.head = head + 1;
-        std::mem::replace(&mut self.buf[head], (TokenKind::Empty, None))
-    }
-
-    pub fn get_token(&self) -> &TokenKind {
-        &self.buf[self.head].0
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.buf[index].0
     }
 }
