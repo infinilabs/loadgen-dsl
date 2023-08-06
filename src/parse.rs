@@ -266,3 +266,61 @@ struct Unknown {
 struct Eof {
     span: Span,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn peek_and() {
+        let mut parser = Parser::new("abc 123 'xyz'");
+        assert!(parser.peek(Ident.and(LitNumber).and(LitString)));
+    }
+
+    #[test]
+    fn peek_or() {
+        let mut parser = Parser::new("abc 123 'xyz'");
+        assert!(parser.peek(
+            Any.not()
+                .and(Any.not())
+                .or(Any.and(LitNumber).and(LitString))
+        ));
+    }
+
+    #[test]
+    fn parse_token() {
+        let mut parser = Parser::new("abc 123 'xyz' / /.*/");
+        parser.parse::<Ident>().unwrap();
+        parser.parse::<LitNumber>().unwrap();
+        parser.parse::<LitString>().unwrap();
+        parser.parse::<Punct>().unwrap();
+        parser.parse::<LitRegexp>().unwrap();
+    }
+
+    #[test]
+    fn parse_regexp() {
+        let mut parser = Parser::new("/abc 123/ 'xyz'");
+        parser.peek(Any.and(Any).and(Any));
+        parser.parse::<LitRegexp>().unwrap();
+        parser.parse::<LitString>().unwrap();
+    }
+
+    #[test]
+    fn is_empty() {
+        let mut parser = Parser::new("abc 123 'xyz'");
+        parser.parse::<Ident>().unwrap();
+        parser.parse::<LitNumber>().unwrap();
+        parser.parse::<LitString>().unwrap();
+        // Lexer is empty
+        assert!(parser.is_empty());
+        let mut parser = Parser::new("abc 123 'xyz'");
+        parser.peek(Any.and(Any).and(Any));
+        // Lexer is empty, but ParserBuffer is not
+        assert!(!parser.is_empty());
+        parser.parse::<Ident>().unwrap();
+        parser.parse::<LitNumber>().unwrap();
+        parser.parse::<LitString>().unwrap();
+        // now ParserBuffer is empty
+        assert!(parser.is_empty());
+    }
+}
