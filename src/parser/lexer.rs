@@ -50,6 +50,13 @@ define_pattern!(
 
 pub(super) type LexResult<T = TokenKind> = (T, Option<Error>);
 
+/// A region of source code.
+#[derive(Clone, Copy, Debug)]
+pub struct Span {
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+}
+
 pub(super) struct Lexer<'a> {
     cur: Cursor<'a>,
     /// Starting position in a parse.

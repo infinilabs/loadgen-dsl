@@ -1,8 +1,8 @@
 mod buffer;
-use buffer::*;
+pub use buffer::*;
 
 mod lexer;
-use lexer::*;
+pub use lexer::*;
 
 use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
 
@@ -36,13 +36,6 @@ pub trait Parse: Sized {
     fn parse(parser: &mut Parser) -> Result<Self>;
 }
 
-/// A region of source code.
-#[derive(Clone, Copy, Debug)]
-pub struct Span {
-    start: u32,
-    end: u32,
-}
-
 pub struct Parser<'a> {
     buf: ParserBuffer<'a>,
 }
@@ -55,8 +48,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.buf.lexer.is_empty()
-            && (self.buf.is_empty() || matches!(self.buf[0], TokenKind::Eof(_)))
+        self.buf.is_eof()
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
@@ -65,10 +57,7 @@ impl<'a> Parser<'a> {
 
     pub fn peek<T: Peek>(&mut self, f: T) -> bool {
         let mut head = 0;
-        f.peek(Cursor {
-            buf: &mut self.buf,
-            head: &mut head,
-        })
+        f.peek(Cursor::new(&mut self.buf, &mut head))
     }
 
     fn parse_token(&mut self) -> Result<TokenKind> {
@@ -81,65 +70,6 @@ impl<'a> Parser<'a> {
         T: Token + TryFrom<TokenKind, Error = TokenKind>,
     {
         T::try_from(self.parse_token()?).map_err(|t| Error::unexpected(t.span(), T::display()))
-    }
-}
-
-pub struct Cursor<'a, 'b> {
-    buf: &'b mut ParserBuffer<'a>,
-    head: &'b mut usize,
-}
-
-impl<'a, 'b> Cursor<'a, 'b> {
-    fn get_token(&self) -> &TokenKind {
-        &self.buf[*self.head]
-    }
-
-    fn get_token_as<T>(&self) -> Option<&T>
-    where
-        for<'t> &'t T: TryFrom<&'t TokenKind>,
-    {
-        self.get_token().try_into().ok()
-    }
-
-    pub fn advance(self) -> Self {
-        *self.head += 1;
-        self.buf.grow(*self.head);
-        Self { ..self }
-    }
-
-    pub fn get_ident(&self) -> Option<&Ident> {
-        self.get_token_as()
-    }
-
-    pub fn get_number(&self) -> Option<&LitNumber> {
-        self.get_token_as()
-    }
-
-    pub fn get_sting(&self) -> Option<&LitString> {
-        self.get_token_as()
-    }
-
-    pub fn get_punct(&self) -> Option<&Punct> {
-        self.get_token_as()
-    }
-
-    pub fn peek_punct(self, display: &str) -> bool {
-        let mut cur = self;
-        let mut chars = display.chars();
-        let Some(mut ch) = chars.next() else { return false };
-        loop {
-            let Some(p) = cur.get_punct() else { break };
-            if p.value != ch {
-                break;
-            }
-            let Some(next) = chars.next() else { break };
-            if !p.joint {
-                break;
-            }
-            cur = cur.advance();
-            ch = next;
-        }
-        false
     }
 }
 
@@ -290,7 +220,7 @@ impl Token for LitRegexp {
 
 impl Parse for LitRegexp {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        parser.buf.lexer.set_flag(Lexer::ALLOW_REGEXP);
+        parser.buf.set_flag(Lexer::ALLOW_REGEXP);
         parser.buf.reset();
         parser.parse_token_as()
     }
@@ -330,40 +260,4 @@ struct Unknown {
 #[derive(Debug)]
 struct Eof {
     span: Span,
-}
-
-pub struct And<A, B> {
-    a: A,
-    b: B,
-}
-
-impl<A, B> Peek for And<A, B>
-where
-    A: Peek,
-    B: Peek,
-{
-    fn peek(self, cur: Cursor) -> bool {
-        let Cursor { buf, head } = cur;
-        self.a.peek(Cursor { buf, head }) && self.b.peek(Cursor { buf, head }.advance())
-    }
-}
-
-pub struct Or<A, B> {
-    a: A,
-    b: B,
-}
-
-impl<A, B> Peek for Or<A, B>
-where
-    A: Peek,
-    B: Peek,
-{
-    fn peek(self, cur: Cursor) -> bool {
-        let Cursor { buf, head } = cur;
-        let current_head = *head;
-        self.a.peek(Cursor { buf, head }) || {
-            *head = current_head;
-            self.b.peek(Cursor { buf, head })
-        }
-    }
 }
