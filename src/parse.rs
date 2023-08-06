@@ -57,6 +57,7 @@ impl<'a> Parser<'a> {
 
     pub fn peek<T: Peek>(&mut self, f: T) -> bool {
         let mut head = 0;
+        self.buf.grow(1);
         f.peek(Cursor::new(&mut self.buf, &mut head))
     }
 
@@ -246,7 +247,7 @@ impl Punct {
         self.value
     }
 
-    /// Returns whether this punctuation is immediately followed by another [`Punct`].
+    /// Returns whether this punctuation is immediately followed by another [`struct@Punct`].
     pub fn is_joint(&self) -> bool {
         self.joint
     }

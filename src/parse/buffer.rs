@@ -1,6 +1,5 @@
-use std::{collections::VecDeque, ops};
-
 use super::*;
+use std::{collections::VecDeque, ops};
 
 pub(super) struct ParserBuffer<'a> {
     lexer: Lexer<'a>,
@@ -71,7 +70,7 @@ impl<'a, 'b> Cursor<'a, 'b> {
 
     pub fn advance(self) -> Self {
         *self.head += 1;
-        self.buf.grow(*self.head);
+        self.buf.grow(*self.head + 1);
         Self { ..self }
     }
 
