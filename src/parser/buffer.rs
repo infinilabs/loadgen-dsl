@@ -3,7 +3,7 @@ use super::*;
 pub(super) struct ParserBuffer<'a> {
     pub lexer: Lexer<'a>,
     buf: Vec<LexResult>,
-    head: u32,
+    head: usize,
 }
 
 impl<'a> ParserBuffer<'a> {
@@ -16,18 +16,24 @@ impl<'a> ParserBuffer<'a> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.head as usize >= self.buf.len()
+        self.head >= self.buf.len()
     }
 
-    pub fn clear(&mut self) {
-        debug_assert!(self.is_empty());
-        self.head = 0;
-        self.buf.clear();
+    pub fn gc(&mut self) {
+        if self.is_empty() {
+            self.head = 0;
+            self.buf.clear();
+        } else if self.head > 12 {
+            debug_assert!(matches!(self.buf[self.head - 1].0, TokenKind::Empty));
+            self.buf.drain(..self.head);
+        }
     }
 
     pub fn reset(&mut self) {
-        self.lexer.seek(self.get_token().span().start);
-        self.buf.truncate(self.head as usize);
+        if !self.is_empty() {
+            self.lexer.seek(self.get_token().span().start);
+            self.buf.truncate(self.head);
+        }
     }
 
     pub fn advance(&mut self) {
@@ -52,10 +58,10 @@ impl<'a> ParserBuffer<'a> {
     pub fn pop(&mut self) -> LexResult {
         let head = self.head;
         self.head = head + 1;
-        std::mem::replace(&mut self.buf[head as usize], (DUMMY, None))
+        std::mem::replace(&mut self.buf[head], (TokenKind::Empty, None))
     }
 
     pub fn get_token(&self) -> &TokenKind {
-        &self.buf[self.head as usize].0
+        &self.buf[self.head].0
     }
 }

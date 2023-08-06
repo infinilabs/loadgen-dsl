@@ -6,13 +6,6 @@ use lexer::*;
 
 use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
 
-const DUMMY: TokenKind = TokenKind::Eof(Eof {
-    span: Span {
-        start: u32::MAX,
-        end: u32::MAX,
-    },
-});
-
 pub trait Token: Parse {
     fn display() -> &'static str;
     fn peek(cur: Cursor) -> bool;
@@ -70,10 +63,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn peek<T: Peek>(&mut self, f: T) -> bool {
-        if self.buf.is_empty() {
-            self.buf.clear();
-            self.buf.push();
-        }
+        self.buf.gc();
+        self.buf.advance();
         self.buf.peek(|buf| f.peek(Cursor { buf }))
     }
 
@@ -149,12 +140,16 @@ macro_rules! define_token {
     ($(#[$attr:meta])* enum $name:ident {
         $($variant:ident => $ty:ident,)*
     }) => {
-        $(#[$attr])* enum $name { $($variant($ty),)* }
+        $(#[$attr])* enum $name {
+            $($variant($ty),)*
+            Empty,
+        }
 
         impl $name {
             pub fn span(&self) -> Span {
                 match self {
-                    $(Self::$variant(v) => v.span,)*
+                    $(Self::$variant(v) => v.span(),)*
+                    Self::Empty => unreachable!(),
                 }
             }
         }
@@ -229,7 +224,7 @@ define_token! {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Ident {
     span: Span,
     value: Box<str>,
@@ -243,7 +238,7 @@ impl Ident {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct LitNumber {
     span: Span,
     value: f64,
@@ -257,7 +252,7 @@ impl LitNumber {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct LitString {
     span: Span,
     value: Box<str>,
@@ -271,7 +266,7 @@ impl LitString {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct LitRegexp {
     span: Span,
     value: Box<str>,
@@ -291,9 +286,7 @@ impl Token for LitRegexp {
 impl Parse for LitRegexp {
     fn parse(parser: &mut Parser) -> Result<Self> {
         parser.buf.lexer.set_flag(Lexer::ALLOW_REGEXP);
-        if !parser.buf.is_empty() {
-            parser.buf.reset();
-        }
+        parser.buf.reset();
         parser.parse_token_as()
     }
 }
@@ -324,12 +317,12 @@ impl Punct {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Unknown {
     span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Eof {
     span: Span,
 }
