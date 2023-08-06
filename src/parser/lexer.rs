@@ -109,8 +109,8 @@ impl<'a> Lexer<'a> {
                     joint: !self.cur.is_eof() && !self.skip_if(whitespace),
                 }
                 .into(),
-                _ if !self.cur.is_eof() => Unknown { span: self.span() }.into(),
-                _ => Eof { span: self.span() }.into(),
+                EOF if self.cur.is_eof() => Eof { span: self.span() }.into(),
+                _ => Unknown { span: self.span() }.into(),
             };
             self.flag = 0;
             break (token, self.take_error());
@@ -180,15 +180,15 @@ impl<'a> Lexer<'a> {
                         'r' => self.buf.push('\r'),
                         't' => self.buf.push('\t'),
                         '\'' | '"' | '\\' | '/' => self.buf.push(ch),
-                        _ => self.error(self.span_from(start), InvalidEscape(ch)),
+                        _ => self.error(self.span_from(start - 1), InvalidEscape(ch)),
                     }
                 }
                 ch if ch == quote => break,
-                ch if !self.cur.is_eof() => self.buf.push(ch),
-                _ => {
+                EOF if self.cur.is_eof() => {
                     self.error(self.span(), UnterminatedString);
                     break;
                 }
+                ch => self.buf.push(ch),
             }
         }
         LitString {
@@ -204,11 +204,11 @@ impl<'a> Lexer<'a> {
             match self.cur.next() {
                 '\\' if self.skip_if(|ch| ch == '/') => self.buf.push('/'),
                 ch if ch == quote => break,
-                ch if !self.cur.is_eof() => self.buf.push(ch),
-                _ => {
+                EOF if self.cur.is_eof() => {
                     self.error(self.span(), UnterminatedRegexp);
                     break;
                 }
+                ch => self.buf.push(ch),
             }
         }
         LitRegexp {
@@ -420,10 +420,10 @@ mod tests {
 
     #[test]
     fn lex_string() {
-        let mut lexer = Lexer::new(r#"'abc' "def" 'gh\'i' "j\"kl"#);
+        let mut lexer = Lexer::new(r#"'abc' "def" 'gh\'i' "j\"kl""#);
         lex_string_eq!(lexer.parse(), (0, 5) "abc");
         lex_string_eq!(lexer.parse(), (6, 11) "def");
-        lex_string_eq!(lexer.parse(), (12, 19) "gh'i");
+        lex_string_eq!(lexer.parse(), (12, 19) "gh\'i");
         lex_string_eq!(lexer.parse(), (20, 27) "j\"kl");
     }
 }
