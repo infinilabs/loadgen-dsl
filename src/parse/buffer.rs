@@ -145,3 +145,19 @@ where
         }
     }
 }
+
+pub struct Not<T>(pub T);
+
+impl<T: Peek> Peek for Not<T> {
+    fn peek(self, cur: Cursor) -> bool {
+        !self.0.peek(cur)
+    }
+}
+
+pub struct Any;
+
+impl Peek for Any {
+    fn peek(self, _: Cursor) -> bool {
+        true
+    }
+}

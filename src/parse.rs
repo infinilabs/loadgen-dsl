@@ -14,6 +14,10 @@ pub trait Token: Parse {
 pub trait Peek: Sized {
     fn peek(self, cur: Cursor) -> bool;
 
+    fn not(self) -> Not<Self> {
+        Not(self)
+    }
+
     fn and<T: Peek>(self, and: T) -> And<Self, T> {
         And { a: self, b: and }
     }
