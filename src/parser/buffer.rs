@@ -20,7 +20,7 @@ impl<'a> ParserBuffer<'a> {
     }
 
     /// [`Lexer::set_flag`]
-    pub fn set_flag(&mut self, flag: u8) {
+    pub fn set_flag(&mut self, flag: LexFlag) {
         self.lexer.set_flag(flag);
     }
 

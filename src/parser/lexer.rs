@@ -48,6 +48,7 @@ define_pattern!(
         | '~'
 );
 
+pub(super) type LexFlag = u8;
 pub(super) type LexResult<T = TokenKind> = (T, Option<Error>);
 
 /// A region of source code.
@@ -65,12 +66,12 @@ pub(super) struct Lexer<'a> {
     buf: String,
     /// Possbile errors in a parse.
     err: Option<Error>,
-    flag: u8,
+    flag: LexFlag,
 }
 
 impl<'a> Lexer<'a> {
     pub const MAX_LEN: usize = 1 << 31;
-    pub const ALLOW_REGEXP: u8 = 0b00000001;
+    pub const ALLOW_REGEXP: LexFlag = 0b00000001;
 
     pub fn new(source: &'a str) -> Self {
         if source.len() > Self::MAX_LEN {
@@ -106,7 +107,7 @@ impl<'a> Lexer<'a> {
                     self.skip_line();
                     continue;
                 }
-                '/' if self.flag & Self::ALLOW_REGEXP != 0 => self.next_regexp(ch),
+                '/' if self.check_flag(Self::ALLOW_REGEXP) => self.next_regexp(ch),
                 punct!() => Punct {
                     span: self.span(),
                     value: ch,
@@ -122,7 +123,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Changes the runtime behavior of the next parse.
-    pub fn set_flag(&mut self, flag: u8) {
+    pub fn set_flag(&mut self, flag: LexFlag) {
         self.flag |= flag;
     }
 
@@ -133,6 +134,74 @@ impl<'a> Lexer<'a> {
 
     pub fn is_empty(&self) -> bool {
         self.cur.is_eof()
+    }
+
+    fn check_flag(&self, flag: LexFlag) -> bool {
+        self.flag & flag != 0
+    }
+
+    fn span(&self) -> Span {
+        self.span_from(self.start)
+    }
+
+    fn span_from(&self, start: u32) -> Span {
+        Span {
+            start,
+            end: self.cur.pos(),
+        }
+    }
+
+    fn source(&self) -> &str {
+        self.cur.fetch(self.start, self.cur.pos())
+    }
+
+    fn error(&mut self, span: Span, e: ErrorKind) {
+        let e = Error::new_kind(span, e);
+        if let Some(err) = self.err.as_mut() {
+            err.combine(e);
+        } else {
+            self.err = Some(e)
+        }
+    }
+
+    fn take_error(&mut self) -> Option<Error> {
+        self.err.take()
+    }
+
+    fn take_buf(&mut self) -> Box<str> {
+        let buf = Box::from(&*self.buf);
+        self.buf.clear();
+        buf
+    }
+
+    fn skip_if(&mut self, p: fn(char) -> bool) -> bool {
+        if p(self.cur.peek()) {
+            self.cur.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn skip_while(&mut self, p: fn(char) -> bool) -> bool {
+        if self.skip_if(p) {
+            while !self.cur.is_eof() && self.skip_if(p) {}
+            true
+        } else {
+            false
+        }
+    }
+
+    fn skip_line(&mut self) {
+        self.skip_while(|ch| !matches!(ch, '\n'));
+    }
+
+    fn skip_whitespace(&mut self) {
+        self.skip_while(whitespace);
+    }
+
+    fn skip_digits(&mut self) {
+        self.skip_while(digit);
     }
 
     fn next_ident(&mut self, _start: char) -> TokenKind {
@@ -221,70 +290,6 @@ impl<'a> Lexer<'a> {
             value: self.take_buf(),
         }
         .into()
-    }
-
-    fn error(&mut self, span: Span, e: ErrorKind) {
-        let e = Error::new_kind(span, e);
-        if let Some(err) = self.err.as_mut() {
-            err.combine(e);
-        } else {
-            self.err = Some(e)
-        }
-    }
-
-    fn take_error(&mut self) -> Option<Error> {
-        self.err.take()
-    }
-
-    fn take_buf(&mut self) -> Box<str> {
-        let buf = Box::from(&*self.buf);
-        self.buf.clear();
-        buf
-    }
-
-    fn span(&self) -> Span {
-        self.span_from(self.start)
-    }
-
-    fn span_from(&self, start: u32) -> Span {
-        Span {
-            start,
-            end: self.cur.pos(),
-        }
-    }
-
-    fn source(&self) -> &str {
-        self.cur.fetch(self.start, self.cur.pos())
-    }
-
-    fn skip_if(&mut self, p: fn(char) -> bool) -> bool {
-        if p(self.cur.peek()) {
-            self.cur.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn skip_while(&mut self, p: fn(char) -> bool) -> bool {
-        if self.skip_if(p) {
-            while !self.cur.is_eof() && self.skip_if(p) {}
-            true
-        } else {
-            false
-        }
-    }
-
-    fn skip_line(&mut self) {
-        self.skip_while(|ch| !matches!(ch, '\n'));
-    }
-
-    fn skip_whitespace(&mut self) {
-        self.skip_while(whitespace);
-    }
-
-    fn skip_digits(&mut self) {
-        self.skip_while(digit);
     }
 }
 
