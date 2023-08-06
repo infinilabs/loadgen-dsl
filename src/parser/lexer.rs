@@ -169,9 +169,20 @@ impl<'a> Lexer<'a> {
     fn next_quoted(&mut self, quote: char) -> TokenKind {
         debug_assert!(matches!(quote, '"' | '\'' | '/'));
         loop {
-            // TODO: handle escape characters
             match self.cur.next() {
-                '\\' => self.cur.advance(),
+                '\\' => {
+                    let start = self.cur.pos();
+                    let ch = self.cur.next();
+                    match ch {
+                        'b' => self.buf.push('\x08'),
+                        'f' => self.buf.push('\x0c'),
+                        'n' => self.buf.push('\n'),
+                        'r' => self.buf.push('\r'),
+                        't' => self.buf.push('\t'),
+                        '\'' | '"' | '\\' | '/' => self.buf.push(ch),
+                        _ => self.error(self.span_from(start), InvalidEscape(ch)),
+                    }
+                }
                 ch if ch == quote => break,
                 ch if !self.cur.is_eof() => self.buf.push(ch),
                 _ => {
@@ -191,7 +202,7 @@ impl<'a> Lexer<'a> {
         debug_assert!(matches!(quote, '/'));
         loop {
             match self.cur.next() {
-                '\\' => self.cur.advance(),
+                '\\' if self.skip_if(|ch| ch == '/') => self.buf.push('/'),
                 ch if ch == quote => break,
                 ch if !self.cur.is_eof() => self.buf.push(ch),
                 _ => {
@@ -227,8 +238,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn span(&self) -> Span {
+        self.span_from(self.start)
+    }
+
+    fn span_from(&self, start: u32) -> Span {
         Span {
-            start: self.start,
+            start,
             end: self.cur.pos(),
         }
     }
@@ -357,6 +372,13 @@ mod tests {
         };
     }
 
+    macro_rules! lex_string_eq {
+        ($res:expr, ($start:literal, $end:literal) $val:literal) => {
+            let token = lex_ok!($res, ($start, $end) LitString);
+            assert_eq!(&*token.value, $val);
+        };
+    }
+
     #[test]
     fn cursor() {
         let mut cursor = Cursor::new("xy");
@@ -394,5 +416,14 @@ mod tests {
         lex_err!(lexer.parse(), (3, 5) MissingExponent);
         lex_err!(lexer.parse(), (6, 8) MissingDecimal, (6, 9) MissingExponent);
         lex_err!(lexer.parse(), (10, 12) MissingDecimal, (10, 14) MissingExponent);
+    }
+
+    #[test]
+    fn lex_string() {
+        let mut lexer = Lexer::new(r#"'abc' "def" 'gh\'i' "j\"kl"#);
+        lex_string_eq!(lexer.parse(), (0, 5) "abc");
+        lex_string_eq!(lexer.parse(), (6, 11) "def");
+        lex_string_eq!(lexer.parse(), (12, 19) "gh'i");
+        lex_string_eq!(lexer.parse(), (20, 27) "j\"kl");
     }
 }

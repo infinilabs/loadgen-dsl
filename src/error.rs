@@ -43,6 +43,7 @@ struct ErrorMessage {
 pub(crate) enum ErrorKind {
     MissingDecimal,
     MissingExponent,
+    InvalidEscape(char),
     UnterminatedString,
     UnterminatedRegexp,
     Unexpected(Box<str>),
@@ -55,6 +56,7 @@ impl fmt::Display for ErrorKind {
         match self {
             MissingDecimal => write!(f, "missing digits after the dot symbol"),
             MissingExponent => write!(f, "missing digits after the exponent symbol"),
+            InvalidEscape(ch) => write!(f, "invalid character escape: `{ch}`"),
             UnterminatedString => write!(f, "unterminated string literal"),
             UnterminatedRegexp => write!(f, "unterminated regular expression"),
             Unexpected(t) => write!(f, "expected {t}"),
