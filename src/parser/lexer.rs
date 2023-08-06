@@ -69,9 +69,13 @@ pub(super) struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    pub const MAX_LEN: usize = 1 << 31;
     pub const ALLOW_REGEXP: u8 = 0b00000001;
 
     pub fn new(source: &'a str) -> Self {
+        if source.len() > Self::MAX_LEN {
+            panic!("Lexer supports up to {} bytes", Self::MAX_LEN);
+        }
         Self {
             cur: Cursor::new(source),
             start: 0,
