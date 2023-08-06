@@ -1,4 +1,2 @@
 pub mod error;
-
-mod parser;
-pub use parser::*;
+pub mod parse;

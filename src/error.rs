@@ -1,4 +1,4 @@
-use crate::parser::Span;
+use crate::parse::Span;
 use std::fmt;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
