@@ -30,14 +30,14 @@ impl<'a> ParseBuffer<'a> {
 
     /// Creates a [`Cursor`] for peeking.
     pub fn cursor<'b>(&'b mut self, head: &'b mut usize) -> Cursor<'a, '_> {
-        debug_assert_eq!(*head, 0);
         self.fill(*head + 1);
         Cursor { buf: self, head }
     }
 
     /// Fills the buffer to fit the specified length.
     fn fill(&mut self, len: usize) {
-        self.buf.resize_with(len, || self.lexer.parse());
+        self.buf
+            .resize_with(self.buf.len().max(len), || self.lexer.parse());
     }
 
     /// Removes or parses the next [`TokenKind`].
@@ -96,13 +96,17 @@ impl<'a, 'b> Cursor<'a, 'b> {
     pub fn peek_punct(self, display: &str) -> bool {
         let mut cur = self;
         let mut chars = display.chars();
-        let Some(mut ch) = chars.next() else { return false };
+        let Some(mut ch) = chars.next() else { return true };
         loop {
+            // not a punctuation
             let Some(p) = cur.get_punct() else { break };
+            // not matches
             if p.value != ch {
                 break;
             }
-            let Some(next) = chars.next() else { break };
+            // all match
+            let Some(next) = chars.next() else { return true };
+            // not joint
             if !p.joint {
                 break;
             }
@@ -210,5 +214,16 @@ mod tests {
         buffer.fill(1);
         buffer.reset(Lexer::ALLOW_REGEXP);
         parse_next!(buffer, LitRegexp);
+    }
+
+    #[test]
+    fn peek_punct() {
+        let mut buf = ParseBuffer::new("<< =>");
+        assert!(buf.cursor(&mut 0).peek_punct("<"));
+        assert!(buf.cursor(&mut 0).peek_punct("<<"));
+        assert!(!buf.cursor(&mut 0).peek_punct("<<="));
+        let mut head = 0;
+        assert!(buf.cursor(&mut head).peek_punct("<<"));
+        assert!(buf.cursor(&mut head).advance().peek_punct("=>"));
     }
 }
