@@ -48,20 +48,21 @@ define_pattern!(
         | '~'
 );
 
+pub(super) type ByteIndex = u32;
 pub(super) type LexFlag = u8;
 pub(super) type LexResult<T = TokenKind> = (T, Option<Error>);
 
 /// A region of source code.
 #[derive(Clone, Copy, Debug)]
 pub struct Span {
-    pub(crate) start: u32,
-    pub(crate) end: u32,
+    pub(super) start: ByteIndex,
+    pub(super) end: ByteIndex,
 }
 
 pub(super) struct Lexer<'a> {
     cur: Cursor<'a>,
     /// Starting position in a parse.
-    start: u32,
+    start: ByteIndex,
     /// Characters buffered in a parse.
     buf: String,
     /// Possbile errors in a parse.
@@ -70,7 +71,8 @@ pub(super) struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub const MAX_LEN: usize = 1 << 31;
+    #[allow(clippy::unnecessary_cast)]
+    pub const MAX_LEN: usize = (ByteIndex::MAX as usize) >> 1;
     pub const ALLOW_REGEXP: LexFlag = 0b00000001;
 
     pub fn new(source: &'a str) -> Self {
@@ -128,7 +130,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Moves the cursor to the specified position.
-    pub fn seek(&mut self, pos: u32) {
+    pub fn seek(&mut self, pos: ByteIndex) {
         self.cur.seek(pos);
     }
 
@@ -144,7 +146,7 @@ impl<'a> Lexer<'a> {
         self.span_from(self.start)
     }
 
-    fn span_from(&self, start: u32) -> Span {
+    fn span_from(&self, start: ByteIndex) -> Span {
         Span {
             start,
             end: self.cur.pos(),
@@ -312,12 +314,13 @@ impl<'a> Cursor<'a> {
     }
 
     /// Returns the byte index of the next character.
-    pub fn pos(&self) -> u32 {
-        (self.src.len() - self.iter.as_str().len()) as u32
+    pub fn pos(&self) -> ByteIndex {
+        (self.src.len() - self.iter.as_str().len()) as ByteIndex
     }
 
     /// Returns the source in the given [`Span`].
-    pub fn fetch(&self, start: u32, end: u32) -> &str {
+    #[allow(clippy::unnecessary_cast)]
+    pub fn fetch(&self, start: ByteIndex, end: ByteIndex) -> &str {
         &self.src[start as usize..end as usize]
     }
 
@@ -332,7 +335,8 @@ impl<'a> Cursor<'a> {
     }
 
     /// Moves the cursor to the specifed position.
-    pub fn seek(&mut self, pos: u32) {
+    #[allow(clippy::unnecessary_cast)]
+    pub fn seek(&mut self, pos: ByteIndex) {
         self.iter = self.src[pos as usize..].chars();
     }
 
