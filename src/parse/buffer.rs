@@ -1,12 +1,12 @@
 use super::*;
 use std::{collections::VecDeque, ops};
 
-pub(super) struct ParserBuffer<'a> {
+pub(super) struct ParseBuffer<'a> {
     lexer: Lexer<'a>,
     buf: VecDeque<LexResult>,
 }
 
-impl<'a> ParserBuffer<'a> {
+impl<'a> ParseBuffer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             lexer: Lexer::new(source),
@@ -14,31 +14,39 @@ impl<'a> ParserBuffer<'a> {
         }
     }
 
-    pub fn is_eof(&self) -> bool {
+    /// Returns whether there are remaining tokens.
+    pub fn is_empty(&self) -> bool {
         self.lexer.is_eof() && matches!(self.buf.front(), None | Some((TokenKind::Eof(_), _)))
     }
 
-    /// [`Lexer::set_flag`]
-    pub fn set_flag(&mut self, flag: LexFlag) {
+    /// Sets the given `flag`, then clears the buffer and seeks the lexer to the start of the first
+    /// peeked [`TokenKind`].
+    pub fn reset(&mut self, flag: LexFlag) {
         self.lexer.set_flag(flag);
-    }
-
-    pub fn reset(&mut self) {
         let Some((first, _)) = self.buf.front() else { return; };
         self.lexer.seek(first.span().start);
         self.buf.clear();
     }
 
-    pub fn grow(&mut self, len: usize) {
+    /// Creates a [`Cursor`] for peeking.
+    pub fn cursor<'b>(&'b mut self, head: &'b mut usize) -> Cursor<'a, '_> {
+        debug_assert_eq!(*head, 0);
+        self.fill(*head + 1);
+        Cursor { buf: self, head }
+    }
+
+    /// Fills the buffer to fit the specified length.
+    fn fill(&mut self, len: usize) {
         self.buf.resize_with(len, || self.lexer.parse());
     }
 
+    /// Removes or parses the next [`TokenKind`].
     pub fn next(&mut self) -> LexResult {
         self.buf.pop_front().unwrap_or_else(|| self.lexer.parse())
     }
 }
 
-impl ops::Index<usize> for ParserBuffer<'_> {
+impl ops::Index<usize> for ParseBuffer<'_> {
     type Output = TokenKind;
 
     fn index(&self, i: usize) -> &Self::Output {
@@ -47,16 +55,11 @@ impl ops::Index<usize> for ParserBuffer<'_> {
 }
 
 pub struct Cursor<'a, 'b> {
-    buf: &'b mut ParserBuffer<'a>,
+    buf: &'b mut ParseBuffer<'a>,
     head: &'b mut usize,
 }
 
 impl<'a, 'b> Cursor<'a, 'b> {
-    pub(super) fn new(buf: &'b mut ParserBuffer<'a>, head: &'b mut usize) -> Self {
-        debug_assert_eq!(*head, 0);
-        Self { buf, head }
-    }
-
     pub(super) fn get_token(&self) -> &TokenKind {
         &self.buf[*self.head]
     }
@@ -70,7 +73,7 @@ impl<'a, 'b> Cursor<'a, 'b> {
 
     pub fn advance(self) -> Self {
         *self.head += 1;
-        self.buf.grow(*self.head + 1);
+        self.buf.fill(*self.head + 1);
         Self { ..self }
     }
 
@@ -159,5 +162,53 @@ pub struct Any;
 impl Peek for Any {
     fn peek(self, _: Cursor) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! parse_next {
+        ($buffer:expr, $ty:ident) => {
+            let (token, err) = $buffer.next();
+            assert!(err.is_none());
+            assert!(<$ty>::try_from(token).is_ok());
+        };
+    }
+
+    #[test]
+    fn is_empty() {
+        let mut buffer = ParseBuffer::new("abc 123 'xyz'");
+        parse_next!(buffer, Ident);
+        parse_next!(buffer, LitNumber);
+        parse_next!(buffer, LitString);
+        // Lexer reaches EOF
+        assert!(buffer.lexer.is_eof());
+        assert!(buffer.buf.is_empty());
+        assert!(buffer.is_empty());
+        let mut buf = ParseBuffer::new("abc 123 'xyz'");
+        buf.fill(3);
+        // Lexer reaches EOF, but buffer is not empty
+        assert!(buf.lexer.is_eof());
+        assert!(!buf.buf.is_empty());
+        assert!(!buf.is_empty());
+        parse_next!(buf, Ident);
+        parse_next!(buf, LitNumber);
+        parse_next!(buf, LitString);
+        // now buffer is empty
+        assert!(buf.buf.is_empty());
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn reset() {
+        let mut buf = ParseBuffer::new("/.*/");
+        buf.fill(1);
+        parse_next!(buf, Punct);
+        let mut buffer = ParseBuffer::new("/.*/");
+        buffer.fill(1);
+        buffer.reset(Lexer::ALLOW_REGEXP);
+        parse_next!(buffer, LitRegexp);
     }
 }

@@ -351,21 +351,6 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
 
-    macro_rules! assert_matches {
-        ($left:expr, $(|)? $( $pattern:pat_param )|+ $( if $guard: expr )? $(,)?) => {
-            match $left {
-                $( $pattern )|+ $( if $guard )? => {}
-                ref left => {
-                    panic!(
-                        "assertion failed: `(left matches right)`\n left: `{}`\nright: `{:?}`",
-                        stringify!($($pattern)|+ $(if $guard)?),
-                        left,
-                    )
-                }
-            }
-        };
-    }
-
     macro_rules! lex_err {
         ($lexer:expr, $(($start:expr, $end:expr) $err:pat),+ $(,)?) => {{
             let (_, result) = $lexer.parse();
@@ -487,8 +472,8 @@ mod tests {
 
     #[test]
     fn lex_ident() {
-        let mut lexer = Lexer::new("var_1 _var2 var-3");
-        lex_ident!(lexer, (0, 5) "var_1");
+        let mut lexer = Lexer::new("Var_1 _var2 var-3");
+        lex_ident!(lexer, (0, 5) "Var_1");
         lex_ident!(lexer, (6, 11) "_var2");
         lex_ident!(lexer, (12, 17) "var-3");
     }

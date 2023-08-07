@@ -41,18 +41,18 @@ pub trait Parse: Sized {
 }
 
 pub struct Parser<'a> {
-    buf: ParserBuffer<'a>,
+    buf: ParseBuffer<'a>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
-            buf: ParserBuffer::new(source),
+            buf: ParseBuffer::new(source),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.buf.is_eof()
+        self.buf.is_empty()
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
@@ -60,9 +60,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn peek<T: Peek>(&mut self, f: T) -> bool {
-        let mut head = 0;
-        self.buf.grow(1);
-        f.peek(Cursor::new(&mut self.buf, &mut head))
+        f.peek(self.buf.cursor(&mut 0))
     }
 
     fn parse_token(&mut self) -> Result<TokenKind> {
@@ -225,8 +223,7 @@ impl Token for LitRegexp {
 
 impl Parse for LitRegexp {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        parser.buf.set_flag(Lexer::ALLOW_REGEXP);
-        parser.buf.reset();
+        parser.buf.reset(Lexer::ALLOW_REGEXP);
         parser.parse_token_as()
     }
 }
@@ -303,24 +300,5 @@ mod tests {
         parser.peek(Any.and(Any).and(Any));
         parser.parse::<LitRegexp>().unwrap();
         parser.parse::<LitString>().unwrap();
-    }
-
-    #[test]
-    fn is_empty() {
-        let mut parser = Parser::new("abc 123 'xyz'");
-        parser.parse::<Ident>().unwrap();
-        parser.parse::<LitNumber>().unwrap();
-        parser.parse::<LitString>().unwrap();
-        // Lexer is empty
-        assert!(parser.is_empty());
-        let mut parser = Parser::new("abc 123 'xyz'");
-        parser.peek(Any.and(Any).and(Any));
-        // Lexer is empty, but ParserBuffer is not
-        assert!(!parser.is_empty());
-        parser.parse::<Ident>().unwrap();
-        parser.parse::<LitNumber>().unwrap();
-        parser.parse::<LitString>().unwrap();
-        // now ParserBuffer is empty
-        assert!(parser.is_empty());
     }
 }
