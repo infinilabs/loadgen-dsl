@@ -15,7 +15,7 @@ impl<'a> ParserBuffer<'a> {
     }
 
     pub fn is_eof(&self) -> bool {
-        self.lexer.is_empty() && matches!(self.buf.front(), None | Some((TokenKind::Eof(_), _)))
+        self.lexer.is_eof() && matches!(self.buf.front(), None | Some((TokenKind::Eof(_), _)))
     }
 
     /// [`Lexer::set_flag`]

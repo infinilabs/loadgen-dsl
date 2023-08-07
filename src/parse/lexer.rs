@@ -134,7 +134,8 @@ impl<'a> Lexer<'a> {
         self.cur.seek(pos);
     }
 
-    pub fn is_empty(&self) -> bool {
+    /// Returns whether the cursor reaches the EOF.
+    pub fn is_eof(&self) -> bool {
         self.cur.is_eof()
     }
 
