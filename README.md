@@ -42,8 +42,8 @@ keyword    ::= 'null'
              | 'not'
              | 'and'
              | 'or'
-ident      ::= letter ('-' | '_' | letter | digit)*
-letter     ::= [a-zA-Z]
+ident      ::= id_start (id_start | '-' | digit)*
+id_start   ::= [_a-zA-Z]
 prefixop   ::= '-'
              | '>'
              | '<'
@@ -58,10 +58,18 @@ number     ::= digit+
                (. digit+)?
                (('e' | 'E') ('+' | '-')? digit+)?
 digit      ::= [0-9]
-nonzero    ::= digit - '0'
 regex      ::= '/' ('\/' | char - '/')+ '/'
-string     ::= '"' ('\"' | char - '"')* '"'
-             | "'" ("\'" | char - "'")* "'"
+string     ::= '"' (escape | char - '"')* '"'
+             | "'" (escape | char - "'")* "'"
+escape     ::= '\b'
+             | '\f'
+             | '\n'
+             | '\r'
+             | '\t'
+             | "\'"
+             | '\"'
+             | '\\'
+             | '\/'
 char       ::= #x9
              | [#x20-#xD7FF]
              | [#xE000-#xFFFD]
