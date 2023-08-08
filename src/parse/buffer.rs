@@ -33,18 +33,15 @@ impl<'a> ParseBuffer<'a> {
         Cursor { buf: self, head }
     }
 
-    /// Forwards [`Cursor::peek_punct`].
-    pub fn peek_punct(&mut self, display: &str) -> bool {
-        self.cursor(&mut 0).peek_punct(display)
-    }
-
     pub fn parse_punct(&mut self, display: &str) -> Option<Span> {
         let mut head = 0;
         if self.cursor(&mut head).peek_punct(display) {
-                let span = self[0].span().join(self[head].span());
+            let span = self[0].span().join(self[head].span());
             drop(self.buf.drain(..=head));
             Some(span)
-        }  else {None}
+        } else {
+            None
+        }
     }
 
     /// Fills the buffer to fit the specified length.
@@ -114,7 +111,7 @@ impl<'a, 'b> Cursor<'a, 'b> {
     pub fn peek_punct(self, display: &str) -> bool {
         let mut cur = self;
         let mut chars = display.chars();
-        let Some(mut ch) = chars.next() else { 
+        let Some(mut ch) = chars.next() else {
             panic!("a punctuation must not be empty");
         };
         loop {

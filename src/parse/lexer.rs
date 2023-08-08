@@ -152,6 +152,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Returns whether the cursor reaches the EOF.
+    // FIXME: not EOF if there are remaining whitespace/comments
     pub fn is_eof(&self) -> bool {
         self.cur.is_eof()
     }

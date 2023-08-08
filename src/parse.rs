@@ -47,7 +47,30 @@ pub trait Delimiter: Token {
     type Right: Token;
 }
 
-type ParserState = u8;
+#[derive(Clone, Debug)]
+pub struct Delimited<T, D>
+where
+    D: Delimiter,
+{
+    pub left: D,
+    pub content: T,
+    pub right: D::Right,
+}
+
+impl<T, D> Parse for Delimited<T, D>
+where
+    T: Parse,
+    D: Delimiter,
+{
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let (left, content, right) = parser.parse_delimited()?;
+        Ok(Self {
+            left,
+            content,
+            right,
+        })
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Terminated<T, P> {
@@ -121,6 +144,8 @@ where
     }
 }
 
+type ParserState = u8;
+
 pub struct Parser<'a> {
     buf: ParseBuffer<'a>,
     delimiter: Option<&'static str>,
@@ -136,18 +161,6 @@ impl<'a> Parser<'a> {
             delimiter: None,
             state: 0,
         }
-    }
-
-    fn reset_state(&mut self, state: ParserState) {
-        self.state &= !state;
-    }
-
-    fn set_state(&mut self, state: ParserState) {
-        self.state |= state;
-    }
-
-    fn check_state(&self, state: ParserState) -> bool {
-        self.state & state != 0
     }
 
     pub fn is_empty(&self) -> bool {
@@ -169,6 +182,7 @@ impl<'a> Parser<'a> {
     /// Panics if the punctuation is empty.
     pub fn parse_punct(&mut self, display: &str) -> Result<Span> {
         if let Some(span) = self.buf.parse_punct(display) {
+            self.post_parse();
             Ok(span)
         } else {
             self.parse_token_with(|token| {
@@ -197,19 +211,31 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn next_token(&mut self) -> LexResult {
+    fn reset_state(&mut self, state: ParserState) {
+        self.state &= !state;
+    }
+
+    fn set_state(&mut self, state: ParserState) {
+        self.state |= state;
+    }
+
+    fn check_state(&self, state: ParserState) -> bool {
+        self.state & state != 0
+    }
+
+    fn post_parse(&mut self) {
         if self
             .delimiter
-            .map(|r| self.buf.peek_punct(r))
+            .map(|r| self.buf.cursor(&mut 0).peek_punct(r))
             .unwrap_or(false)
         {
             self.set_state(Self::RIGHT_DELIMITED);
         }
-        self.buf.next()
     }
 
     fn parse_token_with<T>(&mut self, f: impl FnOnce(TokenKind) -> Result<T>) -> Result<T> {
-        let (token, e) = self.next_token();
+        let (token, e) = self.buf.next();
+        self.post_parse();
         f(token).map_err(|e2| {
             if let Some(mut e) = e {
                 e.combine(e2);
@@ -421,6 +447,7 @@ struct Eof {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::token::*;
 
     #[test]
     fn peek_and() {
@@ -454,5 +481,37 @@ mod tests {
         parser.peek(Any.and(Any).and(Any));
         parser.parse::<LitRegexp>().unwrap();
         parser.parse::<LitString>().unwrap();
+    }
+
+    #[test]
+    fn parse_delimited() {
+        let mut parser = Parser::new("{ 123 } [ abc ] ( /xyz/ )");
+        parser.parse_delimited::<LitNumber, Brace>().unwrap();
+        parser.parse_delimited::<Ident, Bracket>().unwrap();
+        parser.parse_delimited::<LitRegexp, Paren>().unwrap();
+        let mut parser = Parser::new("{ { [ [ ( ( 123 ) ) ] ] } }");
+        parser
+            .parse::<Delimited<
+                Delimited<
+                    Delimited<
+                        Delimited<Delimited<Delimited<LitNumber, Paren>, Paren>, Bracket>,
+                        Bracket,
+                    >,
+                    Brace,
+                >,
+                Brace,
+            >>()
+            .unwrap();
+    }
+
+    #[test]
+    fn parse_terminated() {
+        let mut parser = Parser::new("[ 1, 2, 3, 4 ] ( /aaa/, /bbb/, /ccc/, /ddd/, )");
+        parser
+            .parse_delimited::<Terminated<LitNumber, Comma>, Bracket>()
+            .unwrap();
+        parser
+            .parse_delimited::<Terminated<LitRegexp, Comma>, Paren>()
+            .unwrap();
     }
 }
