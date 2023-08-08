@@ -1,5 +1,5 @@
 use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
-use std::{collections::VecDeque, ops};
+use std::{collections::VecDeque, marker::PhantomData, ops};
 
 mod buffer;
 pub use buffer::*;
@@ -37,19 +37,89 @@ where
     }
 }
 
-pub trait Parse: Sized {
+pub trait Parse: 'static + Sized {
     fn parse(parser: &mut Parser) -> Result<Self>;
 }
 
-/// A trait that defines a pair of delimiters.
-pub trait Delimiter {
-    /// The left delimiter, which must be a punctuation or errors will result.
-    type Left: Token;
+/// A trait that defines a pair of delimiters, which must be a punctuation or errors will result.
+pub trait Delimiter: Token {
     /// The right delimiter, which must also be a punctuation.
     type Right: Token;
 }
 
 type ParserState = u8;
+
+#[derive(Clone, Debug)]
+pub struct Terminated<T, P> {
+    elems: Vec<(T, P)>,
+    end: Option<T>,
+}
+
+impl<T, P> Default for Terminated<T, P> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T, P> Parse for Terminated<T, P>
+where
+    T: Parse,
+    P: Token,
+{
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let mut new = Self::new();
+        for pair in parser.parse_terminated::<T, P>() {
+            match pair? {
+                Pair::Terminated(t, p) => new.elems.push((t, p)),
+                Pair::End(e) => new.end = Some(e),
+            }
+        }
+        Ok(new)
+    }
+}
+
+impl<T, P> Terminated<T, P> {
+    pub fn new() -> Self {
+        Self {
+            elems: Vec::new(),
+            end: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Pair<T, P> {
+    Terminated(T, P),
+    End(T),
+}
+
+pub struct TerminatedIter<'a, 'b, T, P> {
+    parser: &'b mut Parser<'a>,
+    _marker: PhantomData<(T, P)>,
+}
+
+impl<'a, 'b, T, P> Iterator for TerminatedIter<'a, 'b, T, P>
+where
+    T: Parse,
+    P: Token,
+{
+    type Item = Result<Pair<T, P>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let parser = &mut *self.parser;
+        tryb!({
+            if parser.is_empty() {
+                return Ok(None);
+            }
+            let t = parser.parse()?;
+            if parser.is_empty() {
+                return Ok(Some(Pair::End(t)));
+            }
+            Ok(Some(Pair::Terminated(t, parser.parse()?)))
+        })
+        .transpose()
+    }
+}
 
 pub struct Parser<'a> {
     buf: ParseBuffer<'a>,
@@ -104,13 +174,13 @@ impl<'a> Parser<'a> {
             self.parse_token_with(|token| {
                 Err(Error::new_kind(
                     token.span(),
-                    ExpectedToken(Box::from(display)),
+                    ExpectedToken(Box::from(format!("`{display}`"))),
                 ))
             })
         }
     }
 
-    pub fn parse_delimited<T: Parse, D: Delimiter>(&mut self) -> Result<(D::Left, T, D::Right)> {
+    pub fn parse_delimited<T: Parse, D: Delimiter>(&mut self) -> Result<(D, T, D::Right)> {
         let l = self.parse()?;
         let prev = self.delimiter.replace(D::Right::display());
         let content = self.parse()?;
@@ -118,6 +188,13 @@ impl<'a> Parser<'a> {
         self.delimiter = prev;
         let r = self.parse()?;
         Ok((l, content, r))
+    }
+
+    pub fn parse_terminated<'b, T, P>(&'b mut self) -> TerminatedIter<'a, 'b, T, P> {
+        TerminatedIter {
+            parser: self,
+            _marker: PhantomData,
+        }
     }
 
     fn next_token(&mut self) -> LexResult {
