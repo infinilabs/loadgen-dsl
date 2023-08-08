@@ -122,7 +122,12 @@ impl<'a> Lexer<'a> {
                 punct!() => Punct {
                     span: self.span(),
                     value: ch,
-                    joint: punct(self.cur.peek()),
+                    joint: !(self.is_eof()
+                        || self.skip_if(whitespace)
+                        || self.cur.peek() == '/' && self.cur.peek2() == '/' && {
+                            self.skip_line();
+                            true
+                        }),
                 }
                 .into(),
                 EOF if self.cur.is_eof() => Eof { span: self.span() }.into(),
@@ -197,7 +202,7 @@ impl<'a> Lexer<'a> {
 
     fn skip_while(&mut self, p: fn(char) -> bool) -> bool {
         if self.skip_if(p) {
-            while !self.cur.is_eof() && self.skip_if(p) {}
+            while self.skip_if(p) {}
             true
         } else {
             false
@@ -205,7 +210,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_line(&mut self) {
-        self.skip_while(|ch| !matches!(ch, '\n'));
+        while !self.cur.is_eof() && self.cur.next() != '\n' {}
     }
 
     fn skip_whitespace(&mut self) {
@@ -340,8 +345,12 @@ impl<'a> Cursor<'a> {
     }
 
     /// Looks at the next character in the stream.
-    pub fn peek(&mut self) -> char {
+    pub fn peek(&self) -> char {
         self.iter.clone().next().unwrap_or(EOF)
+    }
+
+    pub fn peek2(&self) -> char {
+        self.iter.clone().nth(1).unwrap_or(EOF)
     }
 
     /// Moves the cursor to the specifed position.
@@ -529,7 +538,7 @@ mod tests {
 
     #[test]
     fn lex_punct() {
-        let mut lexer = Lexer::new(r"!#$ %&* +,- ./: ;<= >?@ []^ {}| ~");
+        let mut lexer = Lexer::new("!#$ %&* +,- ./: ;<= >?@ []^ {}| ~");
         lex_punct!(lexer, (0, 3) '!' '#' '$');
         lex_punct!(lexer, (4, 7) '%' '&' '*');
         lex_punct!(lexer, (8, 11) '+' ',' '-');
@@ -539,6 +548,9 @@ mod tests {
         lex_punct!(lexer, (24, 27) '[' ']' '^');
         lex_punct!(lexer, (28, 31) '{' '}' '|');
         lex_punct!(lexer, (32, 33) '~');
+        let mut lexer = Lexer::new("+// ignored\n+");
+        lex_punct!(lexer, (0, 1) '+');
+        lex_punct!(lexer, (12, 13) '+');
     }
 
     #[test]
