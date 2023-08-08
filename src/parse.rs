@@ -1,10 +1,11 @@
+use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
+use std::{collections::VecDeque, ops};
+
 mod buffer;
 pub use buffer::*;
 
 mod lexer;
 pub use lexer::*;
-
-use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
 
 pub trait Token: Parse {
     fn display() -> &'static str;
@@ -40,19 +41,47 @@ pub trait Parse: Sized {
     fn parse(parser: &mut Parser) -> Result<Self>;
 }
 
+/// A trait that defines a pair of delimiters.
+pub trait Delimiter {
+    /// The left delimiter, which must be a punctuation or errors will result.
+    type Left: Token;
+    /// The right delimiter, which must also be a punctuation.
+    type Right: Token;
+}
+
+type ParserState = u8;
+
 pub struct Parser<'a> {
     buf: ParseBuffer<'a>,
+    delimiter: Option<&'static str>,
+    state: ParserState,
 }
 
 impl<'a> Parser<'a> {
+    const RIGHT_DELIMITED: ParserState = 0b00000001;
+
     pub fn new(source: &'a str) -> Self {
         Self {
             buf: ParseBuffer::new(source),
+            delimiter: None,
+            state: 0,
         }
     }
 
+    fn reset_state(&mut self, state: ParserState) {
+        self.state &= !state;
+    }
+
+    fn set_state(&mut self, state: ParserState) {
+        self.state |= state;
+    }
+
+    fn check_state(&self, state: ParserState) -> bool {
+        self.state & state != 0
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.check_state(Self::RIGHT_DELIMITED) || self.buf.is_empty()
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
@@ -63,16 +92,64 @@ impl<'a> Parser<'a> {
         f.peek(self.buf.cursor(&mut 0))
     }
 
-    fn parse_token(&mut self) -> Result<TokenKind> {
-        let (token, result) = self.buf.next();
-        result.map(Error::from).map(Err).unwrap_or(Ok(token))
+    /// Consumes a joint punctuation sequence in the token stream and returns its [`Span`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the punctuation is empty.
+    pub fn parse_punct(&mut self, display: &str) -> Result<Span> {
+        if let Some(span) = self.buf.parse_punct(display) {
+            Ok(span)
+        } else {
+            self.parse_token_with(|token| {
+                Err(Error::new_kind(
+                    token.span(),
+                    ExpectedToken(Box::from(display)),
+                ))
+            })
+        }
+    }
+
+    pub fn parse_delimited<T: Parse, D: Delimiter>(&mut self) -> Result<(D::Left, T, D::Right)> {
+        let l = self.parse()?;
+        let prev = self.delimiter.replace(D::Right::display());
+        let content = self.parse()?;
+        self.reset_state(Parser::RIGHT_DELIMITED);
+        self.delimiter = prev;
+        let r = self.parse()?;
+        Ok((l, content, r))
+    }
+
+    fn next_token(&mut self) -> LexResult {
+        if self
+            .delimiter
+            .map(|r| self.buf.peek_punct(r))
+            .unwrap_or(false)
+        {
+            self.set_state(Self::RIGHT_DELIMITED);
+        }
+        self.buf.next()
+    }
+
+    fn parse_token_with<T>(&mut self, f: impl FnOnce(TokenKind) -> Result<T>) -> Result<T> {
+        let (token, e) = self.next_token();
+        f(token).map_err(|e2| {
+            if let Some(mut e) = e {
+                e.combine(e2);
+                e
+            } else {
+                e2
+            }
+        })
     }
 
     fn parse_token_as<T>(&mut self) -> Result<T>
     where
         T: Token + TryFrom<TokenKind, Error = TokenKind>,
     {
-        T::try_from(self.parse_token()?).map_err(|t| Error::unexpected(t.span(), T::display()))
+        self.parse_token_with(|token| {
+            T::try_from(token).map_err(|t| Error::unexpected(t.span(), T::display()))
+        })
     }
 }
 

@@ -59,6 +59,15 @@ pub struct Span {
     pub(super) end: ByteIndex,
 }
 
+impl Span {
+    pub(crate) fn join(&self, another: Span) -> Self {
+        Span {
+            start: self.start,
+            end: another.end,
+        }
+    }
+}
+
 pub(super) struct Lexer<'a> {
     cur: Cursor<'a>,
     /// Starting position in a parse.

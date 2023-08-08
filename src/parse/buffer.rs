@@ -1,5 +1,4 @@
 use super::*;
-use std::{collections::VecDeque, ops};
 
 pub(super) struct ParseBuffer<'a> {
     lexer: Lexer<'a>,
@@ -10,7 +9,7 @@ impl<'a> ParseBuffer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             lexer: Lexer::new(source),
-            buf: VecDeque::new(),
+            buf: VecDeque::with_capacity(4),
         }
     }
 
@@ -32,6 +31,20 @@ impl<'a> ParseBuffer<'a> {
     pub fn cursor<'b>(&'b mut self, head: &'b mut usize) -> Cursor<'a, '_> {
         self.fill(*head + 1);
         Cursor { buf: self, head }
+    }
+
+    /// Forwards [`Cursor::peek_punct`].
+    pub fn peek_punct(&mut self, display: &str) -> bool {
+        self.cursor(&mut 0).peek_punct(display)
+    }
+
+    pub fn parse_punct(&mut self, display: &str) -> Option<Span> {
+        let mut head = 0;
+        if self.cursor(&mut head).peek_punct(display) {
+                let span = self[0].span().join(self[head].span());
+            drop(self.buf.drain(..=head));
+            Some(span)
+        }  else {None}
     }
 
     /// Fills the buffer to fit the specified length.
@@ -93,10 +106,17 @@ impl<'a, 'b> Cursor<'a, 'b> {
         self.get_token_as()
     }
 
+    /// Returns whether it points to a joint punctuation sequence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the punctuation is empty.
     pub fn peek_punct(self, display: &str) -> bool {
         let mut cur = self;
         let mut chars = display.chars();
-        let Some(mut ch) = chars.next() else { return true };
+        let Some(mut ch) = chars.next() else { 
+            panic!("a punctuation must not be empty");
+        };
         loop {
             // not a punctuation
             let Some(p) = cur.get_punct() else { break };
