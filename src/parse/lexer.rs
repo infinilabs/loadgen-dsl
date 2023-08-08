@@ -20,12 +20,15 @@ define_pattern!(whitespace, '\t' | '\n' | '\r' | ' ');
 define_pattern!(digit, '0'..='9');
 define_pattern!(ident_start, '_' | 'a'..='z' | 'A' ..='Z');
 define_pattern!(ident_body, ident_start!() | '-' | digit!());
+// TODO: pref binary search?
 define_pattern!(
     punct,
     '!' | '#'
         | '$'
         | '%'
         | '&'
+        | '('
+        | ')'
         | '*'
         | '+'
         | ','
