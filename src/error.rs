@@ -19,8 +19,8 @@ impl Error {
         Self::new_kind(span, ErrorKind::Custom(Box::from(msg.into())))
     }
 
-    pub fn unexpected<S: Into<String>>(span: Span, expected: S) -> Self {
-        Self::new_kind(span, ErrorKind::ExpectedToken(Box::from(expected.into())))
+    pub fn expected<S: Into<String>>(span: Span, expected: S) -> Self {
+        Self::new_kind(span, ErrorKind::ExpectedType(Box::from(expected.into())))
     }
 
     pub fn combine(&mut self, err: Self) {
@@ -46,7 +46,7 @@ pub(crate) enum ErrorKind {
     InvalidEscape(char),
     UnterminatedString,
     UnterminatedRegexp,
-    ExpectedToken(Box<str>),
+    ExpectedType(Box<str>),
     Custom(Box<str>),
 }
 
@@ -59,7 +59,7 @@ impl fmt::Display for ErrorKind {
             InvalidEscape(ch) => write!(f, "invalid character escape: `{ch}`"),
             UnterminatedString => write!(f, "unterminated string literal"),
             UnterminatedRegexp => write!(f, "unterminated regular expression"),
-            ExpectedToken(t) => write!(f, "expected {t}"),
+            ExpectedType(t) => write!(f, "expected {t}"),
             Custom(s) => write!(f, "{s}"),
         }
     }

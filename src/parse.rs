@@ -1,11 +1,14 @@
 use crate::error::{Error, ErrorKind, ErrorKind::*, Result};
-use std::{collections::VecDeque, marker::PhantomData, ops};
+use std::{collections::VecDeque, fmt, marker::PhantomData, ops};
 
 mod buffer;
 pub use buffer::*;
 
 mod lexer;
 pub use lexer::*;
+
+pub(crate) mod token;
+use token::*;
 
 pub trait Token: Parse {
     fn display() -> &'static str;
@@ -41,13 +44,19 @@ pub trait Parse: 'static + Sized {
     fn parse(parser: &mut Parser) -> Result<Self>;
 }
 
+impl<T: Parse> Parse for Box<T> {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        parser.parse().map(Box::new)
+    }
+}
+
 /// A trait that defines a pair of delimiters, which must be a punctuation or errors will result.
 pub trait Delimiter: Token {
     /// The right delimiter, which must also be a punctuation.
     type Right: Token;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Delimited<T, D>
 where
     D: Delimiter,
@@ -72,10 +81,37 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+impl<T, D> fmt::Debug for Delimited<T, D>
+where
+    T: fmt::Debug,
+    D: Delimiter + fmt::Debug,
+    D::Right: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("")
+            .field(&self.left)
+            .field(&self.content)
+            .field(&self.right)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub struct Terminated<T, P> {
     elems: Vec<(T, P)>,
-    end: Option<T>,
+    end: Option<Box<T>>,
+}
+
+impl<T, P> fmt::Debug for Terminated<T, P>
+where
+    T: fmt::Debug,
+    P: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list()
+            .entries(self.elems.iter().map(|(t, _)| t).chain(self.end.as_deref()))
+            .finish()
+    }
 }
 
 impl<T, P> Default for Terminated<T, P> {
@@ -94,7 +130,7 @@ where
         for pair in parser.parse_terminated::<T, P>() {
             match pair? {
                 Pair::Terminated(t, p) => new.elems.push((t, p)),
-                Pair::End(e) => new.end = Some(e),
+                Pair::End(e) => new.end = Some(Box::new(e)),
             }
         }
         Ok(new)
@@ -188,7 +224,7 @@ impl<'a> Parser<'a> {
             self.parse_token_with(|token| {
                 Err(Error::new_kind(
                     token.span(),
-                    ExpectedToken(Box::from(format!("`{display}`"))),
+                    ExpectedType(Box::from(format!("`{display}`"))),
                 ))
             })
         }
@@ -251,7 +287,7 @@ impl<'a> Parser<'a> {
         T: Token + TryFrom<TokenKind, Error = TokenKind>,
     {
         self.parse_token_with(|token| {
-            T::try_from(token).map_err(|t| Error::unexpected(t.span(), T::display()))
+            T::try_from(token).map_err(|t| Error::expected(t.span(), T::display()))
         })
     }
 }
@@ -303,32 +339,6 @@ macro_rules! define_token {
         })*
     };
 }
-macro_rules! impl_peek {
-    ($name:ident) => {
-        #[allow(non_snake_case)]
-        pub fn $name(cur: Cursor) -> bool {
-            <$name as Token>::peek(cur)
-        }
-    };
-}
-macro_rules! impl_token {
-    ($name:ident $display:literal) => {
-        impl_peek!($name);
-        impl Token for $name {
-            fn display() -> &'static str {
-                $display
-            }
-            fn peek(cur: Cursor) -> bool {
-                cur.get_token_as::<Self>().is_some()
-            }
-        }
-        impl Parse for $name {
-            fn parse(parser: &mut Parser) -> Result<Self> {
-                parser.parse_token_as()
-            }
-        }
-    };
-}
 define_token! {
     #[derive(Debug)]
     enum TokenKind {
@@ -339,98 +349,6 @@ define_token! {
         Punct    => Punct,
         Unknown  => Unknown,
         Eof      => Eof,
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Ident {
-    span: Span,
-    value: Box<str>,
-}
-
-impl_token!(Ident "identifier");
-
-impl Ident {
-    pub fn value(&self) -> &str {
-        &self.value
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct LitNumber {
-    span: Span,
-    value: f64,
-}
-
-impl_token!(LitNumber "number literal");
-
-impl LitNumber {
-    pub fn value(&self) -> f64 {
-        self.value
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct LitString {
-    span: Span,
-    value: Box<str>,
-}
-
-impl_token!(LitString "string literal");
-
-impl LitString {
-    pub fn value(&self) -> &str {
-        &self.value
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct LitRegexp {
-    span: Span,
-    value: Box<str>,
-}
-
-impl_peek!(LitRegexp);
-
-impl Token for LitRegexp {
-    fn display() -> &'static str {
-        "literal regular expression"
-    }
-    fn peek(cur: Cursor) -> bool {
-        cur.get_punct().map(|p| p.value == '/').unwrap_or(false)
-    }
-}
-
-impl Parse for LitRegexp {
-    fn parse(parser: &mut Parser) -> Result<Self> {
-        parser.buf.reset(Lexer::ALLOW_REGEXP);
-        parser.parse_token_as()
-    }
-}
-
-impl LitRegexp {
-    pub fn value(&self) -> &str {
-        &self.value
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Punct {
-    span: Span,
-    value: char,
-    joint: bool,
-}
-
-impl_token!(Punct "punctuation");
-
-impl Punct {
-    pub fn value(&self) -> char {
-        self.value
-    }
-
-    /// Returns whether this punctuation is immediately followed by another [`struct@Punct`].
-    pub fn is_joint(&self) -> bool {
-        self.joint
     }
 }
 

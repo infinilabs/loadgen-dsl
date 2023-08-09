@@ -56,10 +56,19 @@ pub(super) type LexFlag = u8;
 pub(super) type LexResult<T = TokenKind> = (T, Option<Error>);
 
 /// A region of source code.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Span {
     pub(super) start: ByteIndex,
     pub(super) end: ByteIndex,
+}
+
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("")
+            .field(&self.start)
+            .field(&self.end)
+            .finish()
+    }
 }
 
 impl Span {
