@@ -16,7 +16,8 @@ pub trait Token: Parse {
 }
 
 pub trait Peek: Sized {
-    fn peek(self, cur: Cursor) -> bool;
+    fn peek(&self, cur: Cursor) -> bool;
+    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 
     fn not(self) -> Not<Self> {
         Not(self)
@@ -31,12 +32,19 @@ pub trait Peek: Sized {
     }
 }
 
-impl<F> Peek for F
+pub enum TokenMarker {}
+
+impl<T, F> Peek for F
 where
-    F: FnOnce(Cursor) -> bool,
+    T: Token,
+    F: FnOnce(TokenMarker) -> T,
 {
-    fn peek(self, cur: Cursor) -> bool {
-        (self)(cur)
+    fn peek(&self, cur: Cursor) -> bool {
+        T::peek(cur)
+    }
+
+    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(T::display())
     }
 }
 

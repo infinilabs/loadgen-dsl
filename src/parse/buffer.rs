@@ -144,9 +144,13 @@ where
     A: Peek,
     B: Peek,
 {
-    fn peek(self, cur: Cursor) -> bool {
+    fn peek(&self, cur: Cursor) -> bool {
         let Cursor { buf, head } = cur;
         self.a.peek(Cursor { buf, head }) && self.b.peek(Cursor { buf, head }.advance())
+    }
+
+    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.a.display(f)
     }
 }
 
@@ -160,7 +164,7 @@ where
     A: Peek,
     B: Peek,
 {
-    fn peek(self, cur: Cursor) -> bool {
+    fn peek(&self, cur: Cursor) -> bool {
         let Cursor { buf, head } = cur;
         let current_head = *head;
         self.a.peek(Cursor { buf, head }) || {
@@ -168,21 +172,35 @@ where
             self.b.peek(Cursor { buf, head })
         }
     }
+    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.a.display(f)?;
+        f.write_str(" or ")?;
+        self.b.display(f)
+    }
 }
 
 pub struct Not<T>(pub T);
 
 impl<T: Peek> Peek for Not<T> {
-    fn peek(self, cur: Cursor) -> bool {
+    fn peek(&self, cur: Cursor) -> bool {
         !self.0.peek(cur)
+    }
+
+    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("not ")?;
+        self.0.display(f)
     }
 }
 
 pub struct Any;
 
 impl Peek for Any {
-    fn peek(self, _: Cursor) -> bool {
+    fn peek(&self, _: Cursor) -> bool {
         true
+    }
+
+    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("any token")
     }
 }
 

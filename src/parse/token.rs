@@ -3,8 +3,8 @@ use super::*;
 macro_rules! impl_peek {
     ($name:ident) => {
         #[allow(non_snake_case)]
-        pub fn $name(cur: Cursor) -> bool {
-            <$name as Token>::peek(cur)
+        pub fn $name(marker: TokenMarker) -> $name {
+            match marker {}
         }
     };
 }

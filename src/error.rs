@@ -1,4 +1,4 @@
-use crate::parse::Span;
+use crate::parse::{Peek, Span};
 use std::fmt;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -21,6 +21,16 @@ impl Error {
 
     pub fn expected<S: Into<String>>(span: Span, expected: S) -> Self {
         Self::new_kind(span, ErrorKind::ExpectedType(Box::from(expected.into())))
+    }
+
+    pub fn expected_token<T: Peek>(span: Span, expected: T) -> Self {
+        struct Display<T>(T);
+        impl<T: Peek> fmt::Display for Display<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.display(f)
+            }
+        }
+        Self::expected(span, Display(expected).to_string())
     }
 
     pub fn combine(&mut self, err: Self) {

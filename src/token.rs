@@ -1,6 +1,6 @@
 use crate::{
     error::Result,
-    parse::{Cursor, Delimiter, Parse, Parser, Span, Token},
+    parse::{Cursor, Delimiter, Parse, Parser, Span, Token, TokenMarker},
 };
 use std::fmt;
 
@@ -14,8 +14,8 @@ macro_rules! define_punct {
         }
 
         #[allow(non_snake_case)]
-        $vis fn $name(cur: Cursor) -> bool {
-            <$name as Token>::peek(cur)
+        $vis fn $name(marker: TokenMarker) -> $name {
+            match marker {}
         }
 
         impl fmt::Debug for $name {
@@ -50,8 +50,8 @@ macro_rules! define_keyword {
         }
 
         #[allow(non_snake_case)]
-        $vis fn $name(cur: Cursor) -> bool {
-            <$name as Token>::peek(cur)
+        $vis fn $name(marker: TokenMarker) -> $name {
+            match marker {}
         }
 
         impl fmt::Debug for $name {
