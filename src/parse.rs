@@ -55,6 +55,16 @@ pub trait Parse: 'static + Sized {
     fn parse(parser: &mut Parser) -> Result<Self>;
 }
 
+impl<T: Token> Parse for Option<T> {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if T::peek(parser.buf.cursor(&mut 0)) {
+            parser.parse().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 impl<T: Parse> Parse for Box<T> {
     fn parse(parser: &mut Parser) -> Result<Self> {
         parser.parse().map(Box::new)
@@ -137,14 +147,26 @@ where
     P: Token,
 {
     fn parse(parser: &mut Parser) -> Result<Self> {
+        parser.parse_terminated::<T, P>().collect()
+    }
+}
+
+impl<T, P> FromIterator<Pair<T, P>> for Terminated<T, P> {
+    fn from_iter<I: IntoIterator<Item = Pair<T, P>>>(iter: I) -> Self {
         let mut new = Self::new();
-        for pair in parser.parse_terminated::<T, P>() {
-            match pair? {
-                Pair::Terminated(t, p) => new.elems.push((t, p)),
-                Pair::End(e) => new.end = Some(Box::new(e)),
+        new.extend(iter);
+        new
+    }
+}
+
+impl<T, P> Extend<Pair<T, P>> for Terminated<T, P> {
+    fn extend<I: IntoIterator<Item = Pair<T, P>>>(&mut self, iter: I) {
+        for pair in iter {
+            match pair {
+                Pair::Terminated(t, p) => self.elems.push((t, p)),
+                Pair::End(e) => self.end = Some(Box::new(e)),
             }
         }
-        Ok(new)
     }
 }
 
