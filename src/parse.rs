@@ -13,6 +13,9 @@ use token::*;
 pub trait Token: Parse {
     fn display() -> &'static str;
     fn peek(cur: Cursor) -> bool;
+    fn is_punct() -> Option<&'static str> {
+        None
+    }
 }
 
 pub trait Peek: Sized {
@@ -188,27 +191,21 @@ where
     }
 }
 
-type ParserState = u8;
-
 pub struct Parser<'a> {
     buf: ParseBuffer<'a>,
     delimiter: Option<&'static str>,
-    state: ParserState,
 }
 
 impl<'a> Parser<'a> {
-    const RIGHT_DELIMITED: ParserState = 0b00000001;
-
     pub fn new(source: &'a str) -> Self {
         Self {
             buf: ParseBuffer::new(source),
             delimiter: None,
-            state: 0,
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.check_state(Self::RIGHT_DELIMITED) || self.buf.is_empty()
+    pub fn is_empty(&mut self) -> bool {
+        self.is_delimited() || self.buf.is_empty()
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
@@ -226,7 +223,7 @@ impl<'a> Parser<'a> {
     /// Panics if the punctuation is empty.
     pub fn parse_punct(&mut self, display: &str) -> Result<Span> {
         if let Some(span) = self.buf.parse_punct(display) {
-            self.post_parse();
+            self.is_delimited();
             Ok(span)
         } else {
             self.parse_token_with(|token| {
@@ -238,11 +235,15 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the specified delimiter is not a punctuation.
     pub fn parse_delimited<T: Parse, D: Delimiter>(&mut self) -> Result<(D, T, D::Right)> {
         let l = self.parse()?;
-        let prev = self.delimiter.replace(D::Right::display());
+        let prev = self
+            .delimiter
+            .replace(D::Right::is_punct().expect("a delimiter must be a punctuation"));
         let content = self.parse()?;
-        self.reset_state(Parser::RIGHT_DELIMITED);
         self.delimiter = prev;
         let r = self.parse()?;
         Ok((l, content, r))
@@ -255,31 +256,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn reset_state(&mut self, state: ParserState) {
-        self.state &= !state;
+    pub fn span(&mut self) -> Span {
+        self.buf.fill(1);
+        self.buf[0].span()
     }
 
-    fn set_state(&mut self, state: ParserState) {
-        self.state |= state;
-    }
-
-    fn check_state(&self, state: ParserState) -> bool {
-        self.state & state != 0
-    }
-
-    fn post_parse(&mut self) {
-        if self
-            .delimiter
+    fn is_delimited(&mut self) -> bool {
+        self.delimiter
             .map(|r| self.buf.cursor(&mut 0).peek_punct(r))
             .unwrap_or(false)
-        {
-            self.set_state(Self::RIGHT_DELIMITED);
-        }
     }
 
     fn parse_token_with<T>(&mut self, f: impl FnOnce(TokenKind) -> Result<T>) -> Result<T> {
         let (token, e) = self.buf.next();
-        self.post_parse();
+        self.is_delimited();
         f(token).map_err(|e2| {
             if let Some(mut e) = e {
                 e.combine(e2);

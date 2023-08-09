@@ -45,7 +45,7 @@ impl<'a> ParseBuffer<'a> {
     }
 
     /// Fills the buffer to fit the specified length.
-    fn fill(&mut self, len: usize) {
+    pub fn fill(&mut self, len: usize) {
         self.buf
             .resize_with(self.buf.len().max(len), || self.lexer.parse());
     }

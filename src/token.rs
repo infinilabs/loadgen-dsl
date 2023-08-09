@@ -1,13 +1,13 @@
 use crate::{
-    error::Result,
+    error::{Error, Result},
     parse::{Cursor, Delimiter, Parse, Parser, Span, Token, TokenMarker},
 };
 use std::fmt;
 
 pub use crate::parse::token::*;
 
-macro_rules! define_punct {
-    ($(#[$attr:meta])* $vis:vis struct $name:ident($display:literal);) => {
+macro_rules! define_token {
+    ($(#[$attr:meta])* $vis:vis struct $name:ident($display:tt);) => {
         $(#[$attr])*
         $vis struct $name {
             span: Span,
@@ -28,64 +28,62 @@ macro_rules! define_punct {
 
         impl Token for $name {
             fn display() -> &'static str {
-                $display
+                define_token!(@display $display)
             }
             fn peek(cur: Cursor) -> bool {
-                cur.peek_punct($display)
+                define_token!(@peek cur, $display)
+            }
+            fn is_punct() -> Option<&'static str> {
+                define_token!(@is_punct $display)
             }
         }
 
         impl Parse for $name {
             fn parse(parser: &mut Parser) -> Result<Self> {
-                parser.parse_punct($display).map(|span| Self { span })
+                define_token!(@parse parser, $name, $display)
             }
         }
     };
-}
-macro_rules! define_keyword {
-    ($(#[$attr:meta])* $vis:vis struct $name:ident($display:literal);) => {
-        $(#[$attr])*
-        $vis struct $name {
-            span: Span,
-        }
-
-        #[allow(non_snake_case)]
-        $vis fn $name(marker: TokenMarker) -> $name {
-            match marker {}
-        }
-
-        impl fmt::Debug for $name {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.debug_tuple(stringify!($name))
-                    .field(&self.span)
-                    .finish()
-            }
-        }
-
-        impl Token for $name {
-            fn display() -> &'static str {
-                $display
-            }
-            fn peek(cur: Cursor) -> bool {
-                cur.get_ident().map(|i| i.value() == $display).unwrap_or(false)
-            }
-        }
-
-        impl Parse for $name {
-            fn parse(parser: &mut Parser) -> Result<Self> {
-                parser.parse::<Ident>().map(|i| Self { span: i.span() })
-            }
+    (@display $ident:ident) =>  {
+        concat!("`", stringify!($ident), "`")
+    };
+    (@display $lit:literal) =>  {
+        concat!("`", $lit, "`")
+    };
+    (@is_punct $ident:ident) =>  {
+        None
+    };
+    (@is_punct $lit:literal) =>  {
+        Some($lit)
+    };
+    (@peek $cur:ident, $ident:ident) =>  {
+        $cur.get_ident().map(|i| i.value() == stringify!($ident)).unwrap_or(false)
+    };
+    (@peek $cur:ident, $lit:literal) =>  {
+        $cur.peek_punct($lit)
+    };
+    (@parse $parser:ident, $name:ident, $ident:ident) =>  {
+        if $parser.peek($name) {
+            $parser.parse::<Ident>().map(|i| Self { span: i.span() })
+        } else {
+            Err(Error::expected_token($parser.span(), $name))
         }
     };
-
+    (@parse $parser:ident, $name:ident, $lit:literal) =>  {
+        if $parser.peek($name) {
+            $parser.parse_punct($lit).map(|span| Self { span })
+        } else {
+            Err(Error::expected_token($parser.span(), $name))
+        }
+    };
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Brace("{");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct RBrace("}");
 }
@@ -94,12 +92,12 @@ impl Delimiter for Brace {
     type Right = RBrace;
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Bracket("[");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct RBracket("]");
 }
@@ -108,12 +106,12 @@ impl Delimiter for Bracket {
     type Right = RBracket;
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Paren("(");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct RParen(")");
 }
@@ -122,67 +120,67 @@ impl Delimiter for Paren {
     type Right = RParen;
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Comma(",");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Minus("-");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Gt(">");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Lt("<");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Ge(">=");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Le("<=");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Eq("==");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Colon(":");
 }
 
-define_punct! {
+define_token! {
     #[derive(Clone, Copy)]
     pub struct Dot(".");
 }
 
-define_keyword! {
+define_token! {
     #[derive(Clone, Copy)]
-    pub struct And("and");
+    pub struct And(and);
 }
 
-define_keyword! {
+define_token! {
     #[derive(Clone, Copy)]
-    pub struct Or("or");
+    pub struct Or(or);
 }
 
-define_keyword! {
+define_token! {
     #[derive(Clone, Copy)]
-    pub struct Null("null");
+    pub struct Null(null);
 }
 
-define_keyword! {
+define_token! {
     #[derive(Clone, Copy)]
-    pub struct Not("not");
+    pub struct Not(not);
 }
