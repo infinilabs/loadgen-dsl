@@ -196,16 +196,16 @@ impl Parse for UnaryOp {
     fn parse(parser: &mut Parser) -> Result<Self> {
         if parser.peek(Minus) {
             parser.parse().map(Self::Neg)
-        } else if parser.peek(Gt) {
-            parser.parse().map(Self::Gt)
-        } else if parser.peek(Lt) {
-            parser.parse().map(Self::Lt)
+        } else if parser.peek(Eq) {
+            parser.parse().map(Self::Eq)
         } else if parser.peek(Ge) {
             parser.parse().map(Self::Ge)
         } else if parser.peek(Le) {
             parser.parse().map(Self::Le)
-        } else if parser.peek(Eq) {
-            parser.parse().map(Self::Eq)
+        } else if parser.peek(Gt) {
+            parser.parse().map(Self::Gt)
+        } else if parser.peek(Lt) {
+            parser.parse().map(Self::Lt)
         } else if parser.peek(Not) {
             parser.parse().map(Self::Not)
         } else {
@@ -216,7 +216,7 @@ impl Parse for UnaryOp {
 
 impl UnaryOp {
     fn peek() -> impl Peek {
-        Minus.or(Gt).or(Lt).or(Ge).or(Le).or(Eq).or(Not)
+        Minus.or(Eq).or(Ge).or(Le).or(Gt).or(Lt).or(Not)
     }
 }
 
