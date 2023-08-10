@@ -134,7 +134,7 @@ impl Token for LitBool {
     fn peek(cur: Cursor) -> bool {
         cur.get_ident()
             .map(|i| matches!(i.value(), "true" | "false"))
-            .unwrap_or(true)
+            .unwrap_or(false)
     }
 }
 
