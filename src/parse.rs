@@ -177,6 +177,10 @@ impl<T, P> Terminated<T, P> {
             end: None,
         }
     }
+
+    pub fn values(&self) -> impl '_ + Iterator<Item = &'_ T> {
+        self.elems.iter().map(|(t, _)| t).chain(self.end.as_deref())
+    }
 }
 
 #[derive(Clone, Debug)]

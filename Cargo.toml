@@ -5,3 +5,7 @@ edition = "2021"
 
 [profile.release]
 lto = true
+
+[dependencies]
+serde = "1.0"
+serde_yaml = "0.9"

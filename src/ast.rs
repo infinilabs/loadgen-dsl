@@ -111,7 +111,7 @@ impl Parse for ExprObject {
 
 #[derive(Clone, Debug)]
 pub struct Field {
-    pub name: FieldName,
+    pub key: FieldKey,
     pub colon_token: Colon,
     pub value: Box<Expr>,
 }
@@ -122,7 +122,7 @@ impl Parse for Field {
         let colon_token = parser.parse()?;
         let value = parser.parse()?;
         Ok(Self {
-            name,
+            key: name,
             colon_token,
             value,
         })
@@ -130,29 +130,15 @@ impl Parse for Field {
 }
 
 #[derive(Clone, Debug)]
-pub enum FieldName {
-    Ident(Terminated<Ident, Dot>),
+pub enum FieldKey {
+    Path(Path),
     String(LitString),
 }
 
-impl Parse for FieldName {
+impl Parse for FieldKey {
     fn parse(parser: &mut Parser) -> Result<Self> {
         if parser.peek(Ident) {
-            let mut ident = Some(parser.parse::<Ident>()?);
-            std::iter::from_fn(|| {
-                tryb!({
-                    let Some(id) = ident.take() else { return Ok(None) };
-                    if let Some(dot) = parser.parse::<Option<Dot>>()? {
-                        ident = Some(parser.parse()?);
-                        Ok(Some(Pair::Terminated(id, dot)))
-                    } else {
-                        Ok(Some(Pair::End(id)))
-                    }
-                })
-                .transpose()
-            })
-            .collect::<Result<_>>()
-            .map(Self::Ident)
+            parser.parse().map(Self::Path)
         } else if parser.peek(LitString) {
             parser.parse().map(Self::String)
         } else {
@@ -161,9 +147,34 @@ impl Parse for FieldName {
     }
 }
 
-impl FieldName {
+impl FieldKey {
     fn peek() -> impl Peek {
         Ident.or(LitString)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Path {
+    pub segments: Terminated<Ident, Dot>,
+}
+
+impl Parse for Path {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let mut prev = Some(parser.parse::<Ident>()?);
+        let segments = std::iter::from_fn(|| {
+            tryb!({
+                let Some(id) = prev.take() else { return Ok(None) };
+                if let Some(dot) = parser.parse::<Option<Dot>>()? {
+                    prev = Some(parser.parse()?);
+                    Ok(Some(Pair::Terminated(id, dot)))
+                } else {
+                    Ok(Some(Pair::End(id)))
+                }
+            })
+            .transpose()
+        })
+        .collect::<Result<_>>()?;
+        Ok(Self { segments })
     }
 }
 
@@ -184,30 +195,30 @@ impl Parse for ExprUnary {
 #[derive(Clone, Debug)]
 pub enum UnaryOp {
     Neg(Minus),
-    Gt(Gt),
-    Lt(Lt),
-    Ge(Ge),
-    Le(Le),
-    Eq(Eq),
     Not(Not),
+    Eq(Eq),
+    Ge(Ge),
+    Gt(Gt),
+    Le(Le),
+    Lt(Lt),
 }
 
 impl Parse for UnaryOp {
     fn parse(parser: &mut Parser) -> Result<Self> {
         if parser.peek(Minus) {
             parser.parse().map(Self::Neg)
+        } else if parser.peek(Not) {
+            parser.parse().map(Self::Not)
         } else if parser.peek(Eq) {
             parser.parse().map(Self::Eq)
         } else if parser.peek(Ge) {
             parser.parse().map(Self::Ge)
-        } else if parser.peek(Le) {
-            parser.parse().map(Self::Le)
         } else if parser.peek(Gt) {
             parser.parse().map(Self::Gt)
+        } else if parser.peek(Le) {
+            parser.parse().map(Self::Le)
         } else if parser.peek(Lt) {
             parser.parse().map(Self::Lt)
-        } else if parser.peek(Not) {
-            parser.parse().map(Self::Not)
         } else {
             Err(Error::expected_token(parser.span(), Self::peek()))
         }
@@ -216,7 +227,7 @@ impl Parse for UnaryOp {
 
 impl UnaryOp {
     fn peek() -> impl Peek {
-        Minus.or(Eq).or(Ge).or(Le).or(Gt).or(Lt).or(Not)
+        Minus.or(Not).or(Eq).or(Ge).or(Gt).or(Le).or(Lt)
     }
 }
 
