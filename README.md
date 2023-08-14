@@ -1,6 +1,42 @@
 # 🚀 Loadgen DSL
 
-The assert DSL for Loadgen.
+The assertion DSL for Loadgen.
+
+## ✍️ Example
+
+`loadgen-dsl` compiles a little DSL to the yaml configuration of Loadgen.
+
+```sh
+cargo run --release -- example/example.dsl
+```
+
+Output:
+
+```txt
+and:
+- equals:
+    _ctx.response.body_json.name: lchynn
+- range:
+    _ctx.response.body_json.age:
+      gte: -22.0
+- equals:
+    _ctx.response.body_json.com: infini
+- or:
+  - regexp:
+      _ctx.response.body_json.team: dev.*
+  - regexp:
+      _ctx.response.body_json.team: doc.*
+- and:
+  - equals:
+      _ctx.response.body_json.todo.pizza: inprogress
+- equals:
+    _ctx.response.body_json.todo.dsl: inprogress
+- and:
+  - equals:
+      _ctx.response.body_json.likes.0: anime
+  - equals:
+      _ctx.response.body_json.likes.1: sports
+```
 
 ## 🌲 Grammer
 
