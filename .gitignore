@@ -27,4 +27,3 @@ foo.*
 
 ## Rust
 /target
-/Cargo.lock
