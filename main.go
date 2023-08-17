@@ -3,23 +3,32 @@ package main
 import (
 	"context"
 	_ "embed"
-	"io/ioutil"
+	"flag"
 	"log"
+	"os"
 
 	"github.com/tetratelabs/wazero"
 )
 
-//go:embed target/wasm32-unknown-unknown/release/loadgen_dsl_wasm.wasm
-var wasm []byte
+var plugin = flag.String("p", "", "plugin path")
+var input = flag.String("i", "", "input path")
 
 func main() {
 	var ret []uint64
 	var err error
 
+	flag.Parse()
+	if len(*plugin) == 0 || len(*input) == 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	// read arguments
-	path := "examples/example.dsl"
-	// path := "example/example.dsl"
-	input, err := ioutil.ReadFile(path)
+	plugin, err := os.ReadFile(*plugin)
+	if err != nil {
+		log.Panicln(err)
+	}
+	input, err := os.ReadFile(*input)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -30,7 +39,7 @@ func main() {
 	defer r.Close(ctx)
 
 	// load module
-	mod, err := r.Instantiate(ctx, wasm)
+	mod, err := r.Instantiate(ctx, plugin)
 	if err != nil {
 		log.Panicln(err)
 	}
