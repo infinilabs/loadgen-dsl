@@ -51,6 +51,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "loadgen-dsl-parser"
+version = "0.0.0"
+
+[[package]]
 name = "loadgen-dsl-wasm"
 version = "0.1.0"
 dependencies = [

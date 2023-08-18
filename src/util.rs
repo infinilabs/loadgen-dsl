@@ -84,9 +84,9 @@ macro_rules! assert_matches {
             $( $pattern )|+ $( if $guard )? => {}
             ref left => {
                 panic!(
-                    "assertion failed: `(left matches right)`\n left: `{}`\nright: `{:?}`",
-                    stringify!($($pattern)|+ $(if $guard)?),
+                    "assertion failed: `(left matches right)`\n left: `{:?}`\nright: `{}`",
                     left,
+                    stringify!($($pattern)|+ $(if $guard)?),
                 )
             }
         }
