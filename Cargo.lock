@@ -46,8 +46,11 @@ checksum = "b4668fb0ea861c1df094127ac5f1da3409a82116a4ba74fca2e58ef927159bb3"
 name = "loadgen-dsl"
 version = "0.0.0"
 dependencies = [
+ "loadgen-dsl-compiler",
+ "loadgen-dsl-parser",
  "serde",
  "serde_yaml",
+ "wee_alloc",
 ]
 
 [[package]]
@@ -62,14 +65,6 @@ dependencies = [
 [[package]]
 name = "loadgen-dsl-parser"
 version = "0.0.0"
-
-[[package]]
-name = "loadgen-dsl-wasm"
-version = "0.1.0"
-dependencies = [
- "loadgen-dsl",
- "wee_alloc",
-]
 
 [[package]]
 name = "memory_units"

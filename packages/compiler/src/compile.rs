@@ -10,6 +10,7 @@ pub trait Compilable {
     fn compile_value(&self) -> Result<Yaml> {
         todo!()
     }
+
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let _ = (ctx, field);
         todo!()

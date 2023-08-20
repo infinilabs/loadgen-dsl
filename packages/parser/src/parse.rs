@@ -153,7 +153,7 @@ impl<'a, 'b> Cursor<'a, 'b> {
     }
 
     pub fn peek(&mut self) -> &LexToken {
-        dbg!(self.buf.peek_at(self.head))
+        self.buf.peek_at(self.head)
     }
 
     pub fn parse(&mut self) -> Result<LexToken> {

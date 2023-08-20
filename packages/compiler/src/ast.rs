@@ -1,5 +1,6 @@
 use loadgen_dsl_parser::{
     error::{Error, Result},
+    lex::LexFlag,
     terminated::{Pair, Terminated},
     token::*,
     Parse, Parser, Peek,
@@ -18,6 +19,7 @@ pub enum Expr {
 
 impl Parse for Expr {
     fn parse(parser: &mut Parser) -> Result<Self> {
+        parser.set_flag(LexFlag::ALLOW_REGEXP);
         let left = if parser.peek(ExprLit::peek()) {
             parser.parse().map(Self::Lit)
         } else if parser.peek(Bracket) {

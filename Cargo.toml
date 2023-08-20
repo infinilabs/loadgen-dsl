@@ -6,9 +6,15 @@ name = "loadgen-dsl"
 version = "0.0.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
+loadgen-dsl-compiler = { path = "packages/compiler" }
+loadgen-dsl-parser = { path = "packages/parser" }
 serde = "1.0"
 serde_yaml = "0.9"
+wee_alloc = "0.4"
 
 [profile.release]
 codegen-units = 1
