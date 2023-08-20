@@ -79,6 +79,10 @@ impl<'a> Parser<'a> {
         f.peek(self.cur())
     }
 
+    pub fn advance(&mut self) -> Result<LexToken> {
+        self.parse_next()
+    }
+
     pub fn parse<T>(&mut self) -> Result<T>
     where
         T: Parse,
@@ -246,6 +250,22 @@ where
 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         T::display(f)
+    }
+}
+
+impl<T: Token> Parse for Option<T> {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if T::peek(parser.cur()) {
+            parser.parse_token().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<T: Parse> Parse for Box<T> {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        parser.parse().map(Box::new)
     }
 }
 
