@@ -3,19 +3,25 @@
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[export_name = "alloc"]
-pub unsafe extern "C" fn _alloc(size: usize) -> u64 {
+pub extern "C" fn _alloc(size: usize) -> u64 {
     encode_ptr(
         Box::into_raw(Vec::<u8>::with_capacity(size).into_boxed_slice()) as _,
         size,
     )
 }
 
+/// # Safety
+///
+/// `ptr` must be a valid allocated memory block.
 #[export_name = "free"]
 pub unsafe extern "C" fn _free(ptr: u64) {
     let (ptr, size) = decode_ptr(ptr);
     let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr as *mut u8, size as _).as_mut_ptr());
 }
 
+/// # Safety
+///
+/// `ptr` must be a valid UTF-8 string.
 #[export_name = "compile"]
 pub unsafe extern "C" fn _compile(ptr: u64) -> u64 {
     let (ptr, size) = decode_ptr(ptr);
