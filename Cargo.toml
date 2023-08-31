@@ -4,6 +4,8 @@ members = ["packages/*"]
 [package]
 name = "loadgen-dsl"
 version = "0.0.0"
+authors = ["INFINI Labs <hello@infini.ltd>"]
+license = "AGPL-3.0+"
 edition = "2021"
 
 [lib]
