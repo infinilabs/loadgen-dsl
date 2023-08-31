@@ -7,7 +7,10 @@ The assertion DSL for Loadgen.
 `loadgen-dsl` compiles a little DSL to the yaml configuration of Loadgen.
 
 ```sh
-cargo run --release -- example/example.dsl
+# Build WASM module first,
+cargo build --target wasm32-unknown-unknown --release
+# then run it from Golang
+go run main.go -p target/wasm32-unknown-unknown/release/loadgen_dsl.wasm -i examples/example.dsl
 ```
 
 Output:
