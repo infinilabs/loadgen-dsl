@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -43,8 +44,8 @@ func main() {
 	if err != nil {
 		log.Panicln(err)
 	}
-	alloc := mod.ExportedFunction("alloc")
-	free := mod.ExportedFunction("free")
+	alloc := mod.ExportedFunction("allocate")
+	free := mod.ExportedFunction("deallocate")
 	compile := mod.ExportedFunction("compile")
 
 	// write input
@@ -55,8 +56,16 @@ func main() {
 	}
 	inputPtr := ret[0]
 	defer free.Call(ctx, inputPtr)
-	inputOffset, _ := decode_ptr(inputPtr)
-	mod.Memory().Write(inputOffset, input)
+	_, inputAddr, _ := decode_ptr(inputPtr)
+	mod.Memory().Write(inputAddr, input)
+
+	// prepare memory for results
+	ret, err = alloc.Call(ctx, uint64(4))
+	if err != nil {
+		log.Panic(err)
+	}
+	errorPtr := ret[0]
+	defer free.Call(ctx, errorPtr)
 
 	// compile input
 	ret, err = compile.Call(ctx, inputPtr)
@@ -67,14 +76,21 @@ func main() {
 	defer free.Call(ctx, outputPtr)
 
 	// read output
-	bytes, _ := mod.Memory().Read(decode_ptr(outputPtr))
-	println(string(bytes))
+	errors, outputAddr, outputSize := decode_ptr(outputPtr)
+	bytes, _ := mod.Memory().Read(outputAddr, outputSize)
+	// check errors
+	if errors {
+		fmt.Printf("Error:\n%s", bytes)
+	} else {
+		fmt.Printf("Output:\n%s", bytes)
+
+	}
 }
 
-func decode_ptr(ptr uint64) (uint32, uint32) {
-	return uint32(ptr), uint32(ptr >> 32)
-}
-
-func encode_ptr(ptr uint32, size int) uint64 {
-	return uint64(ptr) | uint64(size)<<32
+func decode_ptr(ptr uint64) (errors bool, addr, size uint32) {
+	const SIZE_MASK uint32 = (^uint32(0)) >> 1
+	addr = uint32(ptr)
+	size = uint32(ptr>>32) & SIZE_MASK
+	errors = (ptr >> 63) != 0
+	return
 }
