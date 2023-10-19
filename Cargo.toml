@@ -1,19 +1,19 @@
 [workspace]
-members = ["packages/*"]
+members = ["compiler", "parser"]
 
 [package]
 name = "loadgen-dsl"
 version = "0.0.0"
+edition = "2021"
 authors = ["INFINI Labs <hello@infini.ltd>"]
 license = "AGPL-3.0+"
-edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-loadgen-dsl-compiler = { path = "packages/compiler" }
-loadgen-dsl-parser = { path = "packages/parser" }
+loadgen-dsl-compiler = { path = "compiler" }
+loadgen-dsl-parser = { path = "parser" }
 serde = "1.0"
 serde_yaml = "0.9"
 wee_alloc = "0.4"
