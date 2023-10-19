@@ -58,6 +58,17 @@ impl Error {
     }
 }
 
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for msg in self.inner.iter() {
+            writeln!(f, "{} at ({},{})", msg.kind, msg.span.start, msg.span.end)?
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for Error {}
+
 pub struct ErrorIter<'a> {
     iter: std::slice::Iter<'a, ErrorMessage>,
 }

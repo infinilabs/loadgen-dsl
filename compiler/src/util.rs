@@ -15,11 +15,11 @@ macro_rules! yaml {
         yaml!(@array [] $($array)*)
     };
     ($val:expr) => {
-        serde_yaml::Value::from($val)
+        ::serde_yaml::Value::from($val)
     };
     // == Mapping == //
     (@mapping [$([$key:expr]: $val:expr,)*]) => {
-        serde_yaml::Mapping::from_iter([$(
+        ::serde_yaml::Mapping::from_iter([$(
             (serde_yaml::Value::from($key), serde_yaml::Value::from($val)),
         )*])
     };
@@ -49,7 +49,7 @@ macro_rules! yaml {
     };
     // == Array == //
     (@array [$($val:expr,)*]) => {
-        serde_yaml::Sequence::from_iter([$((serde_yaml::Value::from($val)),)*])
+        ::serde_yaml::Sequence::from_iter([$((serde_yaml::Value::from($val)),)*])
     };
     // Nested mapping
     (@array [$($out:tt)*] {$($mapping:tt)*}, $($rest:tt)*) => {

@@ -12,7 +12,7 @@ pub trait Compilable {
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
-        let _ = (ctx, field);
+        drop((ctx, field));
         todo!()
     }
 }
@@ -99,11 +99,11 @@ impl Compilable for ExprArray {
             .values()
             .enumerate()
             .map(|(i, elem)| {
-                elem.compile_assertion(ctx, &format!("{field}.{i}"))
+                elem.compile_assertion(ctx, &format!("{field}.[{i}]"))
                     .map(Yaml::from)
             })
             .collect::<Result<Sequence>>()?;
-        Ok(yaml!({["and"]: assertions}))
+        Ok(yaml!({ ["and"]: assertions }))
     }
 }
 
@@ -119,7 +119,7 @@ impl Compilable for ExprObject {
                     .map(Yaml::from)
             })
             .collect::<Result<Sequence>>()?;
-        Ok(yaml!({["and"]: assertions }))
+        Ok(yaml!({ ["and"]: assertions }))
     }
 }
 

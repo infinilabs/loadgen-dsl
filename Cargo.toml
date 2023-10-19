@@ -12,6 +12,7 @@ license = "AGPL-3.0+"
 crate-type = ["cdylib"]
 
 [dependencies]
+anyhow = "1.0"
 loadgen-dsl-compiler = { path = "compiler" }
 loadgen-dsl-parser = { path = "parser" }
 serde = "1.0"

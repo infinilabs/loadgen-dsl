@@ -3,21 +3,20 @@ package main
 import (
 	"context"
 	_ "embed"
+	E "errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 
-	"github.com/tetratelabs/wazero"
+	wasm "github.com/tetratelabs/wazero"
+	wasmAPI "github.com/tetratelabs/wazero/api"
 )
 
 var plugin = flag.String("p", "", "plugin path")
 var input = flag.String("i", "", "input path")
 
 func main() {
-	var ret []uint64
-	var err error
-
 	flag.Parse()
 	if len(*plugin) == 0 || len(*input) == 0 {
 		flag.Usage()
@@ -34,60 +33,82 @@ func main() {
 		log.Panicln(err)
 	}
 
+	// check output
+	output, err := loadPlugins([][]byte{plugin}, string(input))
+	if err != nil {
+		fmt.Printf("#ERROR:\n%s", err)
+	} else {
+		fmt.Printf("#OUTPUT:\n%s", output)
+	}
+}
+
+func loadPlugins(plugins [][]byte, input string) (output string, err error) {
 	// init runtime
 	ctx := context.Background()
-	r := wazero.NewRuntime(ctx)
+	r := wasm.NewRuntime(ctx)
 	defer r.Close(ctx)
 
-	// load module
-	mod, err := r.Instantiate(ctx, plugin)
-	if err != nil {
-		log.Panicln(err)
+	var mod wasmAPI.Module
+	for _, plug := range plugins {
+		// load plugin
+		mod, err = r.Instantiate(ctx, plug)
+		if err != nil {
+			return
+		}
+		// call plugin
+		output, err = callPlugin(ctx, mod, string(input))
+		if err != nil {
+			break
+		}
 	}
+	return
+}
+
+func callPlugin(ctx context.Context, mod wasmAPI.Module, input string) (output string, err error) {
 	alloc := mod.ExportedFunction("allocate")
 	free := mod.ExportedFunction("deallocate")
-	compile := mod.ExportedFunction("compile")
+	process := mod.ExportedFunction("process")
 
 	// write input
 	inputSize := uint32(len(input))
-	ret, err = alloc.Call(ctx, uint64(inputSize))
+	ret, err := alloc.Call(ctx, uint64(inputSize))
 	if err != nil {
-		log.Panic(err)
+		return
 	}
 	inputPtr := ret[0]
 	defer free.Call(ctx, inputPtr)
-	_, inputAddr, _ := decode_ptr(inputPtr)
-	mod.Memory().Write(inputAddr, input)
+	_, inputAddr, _ := decodePtr(inputPtr)
+	mod.Memory().Write(inputAddr, []byte(input))
 
 	// prepare memory for results
 	ret, err = alloc.Call(ctx, uint64(4))
 	if err != nil {
-		log.Panic(err)
+		return
 	}
 	errorPtr := ret[0]
 	defer free.Call(ctx, errorPtr)
 
 	// compile input
-	ret, err = compile.Call(ctx, inputPtr)
+	ret, err = process.Call(ctx, inputPtr)
 	if err != nil {
-		log.Panic(err)
+		return
 	}
 	outputPtr := ret[0]
 	defer free.Call(ctx, outputPtr)
 
 	// read output
-	errors, outputAddr, outputSize := decode_ptr(outputPtr)
+	errors, outputAddr, outputSize := decodePtr(outputPtr)
 	bytes, _ := mod.Memory().Read(outputAddr, outputSize)
-	// check errors
-	if errors {
-		fmt.Printf("Error:\n%s", bytes)
-	} else {
-		fmt.Printf("Output:\n%s", bytes)
 
+	if errors {
+		err = E.New(string(bytes))
+	} else {
+		output = string(bytes)
 	}
+	return
 }
 
-func decode_ptr(ptr uint64) (errors bool, addr, size uint32) {
+func decodePtr(ptr uint64) (errors bool, addr, size uint32) {
 	const SIZE_MASK uint32 = (^uint32(0)) >> 1
 	addr = uint32(ptr)
 	size = uint32(ptr>>32) & SIZE_MASK
