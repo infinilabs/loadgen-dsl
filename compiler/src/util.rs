@@ -1,9 +1,23 @@
-macro_rules! tryb {
-    (move $exp:expr) => {
-        (move || ($exp))()
+macro_rules! assert_matches {
+    ($left:expr, $(|)? $( $pattern:pat_param )|+ $( if $guard: expr )? $(,)?) => {
+        match $left {
+            $( $pattern )|+ $( if $guard )? => {}
+            ref left => {
+                panic!(
+                    "assertion failed: `(left matches right)`\n left: `{:?}`\nright: `{}`",
+                    left,
+                    stringify!($($pattern)|+ $(if $guard)?),
+                )
+            }
+        }
     };
-    ($exp:expr) => {
-        (|| ($exp))()
+}
+
+macro_rules! debug_assert_matches {
+    ($($args:tt)*) => {
+        if cfg!(debug_assertions) {
+            assert_matches!($($args)*);
+        }
     };
 }
 

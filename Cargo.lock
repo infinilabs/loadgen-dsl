@@ -54,7 +54,6 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "loadgen-dsl-compiler",
- "loadgen-dsl-parser",
  "serde",
  "serde_yaml",
  "wee_alloc",
@@ -64,14 +63,8 @@ dependencies = [
 name = "loadgen-dsl-compiler"
 version = "0.0.0"
 dependencies = [
- "loadgen-dsl-parser",
- "serde",
  "serde_yaml",
 ]
-
-[[package]]
-name = "loadgen-dsl-parser"
-version = "0.0.0"
 
 [[package]]
 name = "memory_units"

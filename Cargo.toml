@@ -1,5 +1,5 @@
 [workspace]
-members = ["compiler", "parser"]
+members = ["compiler"]
 
 [workspace.package]
 version = "0.0.0"
@@ -20,7 +20,6 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = "1.0"
 loadgen-dsl-compiler = { path = "compiler" }
-loadgen-dsl-parser = { path = "parser" }
 serde = "1.0"
 serde_yaml = "0.9"
 wee_alloc = "0.4"

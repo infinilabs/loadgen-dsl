@@ -6,6 +6,4 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-loadgen-dsl-parser = { path = "../parser" }
-serde = "1.0"
 serde_yaml = "0.9"

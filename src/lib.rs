@@ -19,7 +19,7 @@ unsafe extern "C" fn _process(ptr: u64) -> u64 {
 }
 
 fn compile(input: &str) -> Result<String> {
-    Ok(serde_yaml::to_string(
-        &loadgen_dsl_compiler::Compiler::new().compile(input)?,
-    )?)
+    Ok(serde_yaml::to_string(&loadgen_dsl_compiler::compile(
+        input,
+    )?)?)
 }

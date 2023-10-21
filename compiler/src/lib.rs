@@ -1,7 +1,13 @@
 #[macro_use]
 mod util;
-pub mod ast;
-pub mod compile;
+mod compiler;
+mod lexer;
+mod parser;
 
-#[doc(inline)]
-pub use compile::Compiler;
+pub mod ast;
+pub mod error;
+
+pub fn compile(s: &str) -> error::Result<serde_yaml::Value> {
+    let ast = parser::Parser::new(s).parse::<ast::Expr>()?;
+    compiler::Compiler::new().compile(&ast)
+}

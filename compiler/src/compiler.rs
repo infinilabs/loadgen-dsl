@@ -1,32 +1,21 @@
-use crate::ast::*;
-use loadgen_dsl_parser::{error::Result, Parser, Span};
+use crate::{ast::*, error::Result};
 use serde_yaml::{Mapping, Sequence, Value as Yaml};
 
-pub trait Spanned {
-    fn span(&self) -> Span;
-}
-
-pub trait Compilable {
+pub(crate) trait Compilable {
     fn compile_value(&self) -> Result<Yaml> {
         todo!()
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
-        drop((ctx, field));
+        let _ = (ctx, field);
         todo!()
     }
 }
 
-pub struct Context {}
+pub(crate) struct Context {}
 
-pub struct Compiler {
+pub(crate) struct Compiler {
     context: Context,
-}
-
-impl Default for Compiler {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl Compiler {
@@ -36,8 +25,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&self, source: &str) -> Result<Yaml> {
-        let ast = Parser::new(source).parse::<Expr>()?;
+    pub fn compile(&self, ast: &Expr) -> Result<Yaml> {
         ast.compile_assertion(&self.context, "_ctx.response.body_json")
             .map(Yaml::from)
     }
@@ -54,13 +42,13 @@ impl Compilable for Expr {
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         match self {
-            Self::Lit(l) => l.compile_assertion(ctx, field),
-            Self::Array(a) => a.compile_assertion(ctx, field),
-            Self::Object(o) => o.compile_assertion(ctx, field),
-            Self::Unary(u) => u.compile_assertion(ctx, field),
-            Self::Binary(b) => b.compile_assertion(ctx, field),
-            Self::Funcall(f) => f.compile_assertion(ctx, field),
-            Self::Paren(p) => p.compile_assertion(ctx, field),
+            Self::Array(t) => t.compile_assertion(ctx, field),
+            Self::Binary(t) => t.compile_assertion(ctx, field),
+            Self::Funcall(t) => t.compile_assertion(ctx, field),
+            Self::Lit(t) => t.compile_assertion(ctx, field),
+            Self::Object(t) => t.compile_assertion(ctx, field),
+            Self::Paren(t) => t.compile_assertion(ctx, field),
+            Self::Unary(t) => t.compile_assertion(ctx, field),
         }
     }
 }
@@ -68,11 +56,12 @@ impl Compilable for Expr {
 impl Compilable for ExprLit {
     fn compile_value(&self) -> Result<Yaml> {
         Ok(match self {
+            Self::Bool(t) => Yaml::from(t.value()),
+            Self::Float(t) => Yaml::from(t.value()),
+            Self::Integer(t) => Yaml::from(t.value()),
             Self::Null(_) => Yaml::Null,
-            Self::Bool(b) => Yaml::from(b.value()),
-            Self::Number(n) => Yaml::from(n.value()),
-            Self::String(s) => Yaml::from(s.value()),
-            Self::Regexp(r) => Yaml::from(r.value()),
+            Self::Regexp(t) => Yaml::from(t.value()),
+            Self::String(t) => Yaml::from(t.value()),
         })
     }
 
@@ -96,7 +85,7 @@ impl Compilable for ExprArray {
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let assertions = self
             .elems
-            .values()
+            .items()
             .enumerate()
             .map(|(i, elem)| {
                 elem.compile_assertion(ctx, &format!("{field}.[{i}]"))
@@ -111,7 +100,7 @@ impl Compilable for ExprObject {
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let assertions = self
             .fields
-            .values()
+            .items()
             .map(|f| {
                 let key = f.key.to_field();
                 f.value
@@ -127,7 +116,7 @@ impl FieldKey {
     fn to_field(&self) -> String {
         match self {
             Self::Path(i) => {
-                let mut segments = i.segments.values();
+                let mut segments = i.segments.items();
                 let mut name = if let Some(first) = segments.next() {
                     first.value().into()
                 } else {
@@ -148,7 +137,11 @@ impl Compilable for ExprUnary {
     fn compile_value(&self) -> Result<Yaml> {
         Ok(match self.op {
             UnaryOp::Neg(_) => match self.elem.compile_value()? {
-                Yaml::Number(n) => Yaml::from(-n.as_f64().unwrap()),
+                Yaml::Number(n) => n
+                    .as_i64()
+                    .map(|i| Yaml::from(-i))
+                    .or_else(|| n.as_f64().map(|i| Yaml::from(-i)))
+                    .unwrap(),
                 _ => todo!(),
             },
             _ => todo!(),
@@ -157,9 +150,9 @@ impl Compilable for ExprUnary {
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         Ok(match self.op {
+            UnaryOp::Eq(_) => yaml!({["equals"]: self.elem.compile_value()?}),
             UnaryOp::Neg(_) => todo!(),
             UnaryOp::Not(_) => yaml!({["not"]: self.elem.compile_assertion(ctx, field)?}),
-            UnaryOp::Eq(_) => yaml!({["equals"]: self.elem.compile_value()?}),
             _ => {
                 let op = match self.op {
                     UnaryOp::Ge(_) => "gte",

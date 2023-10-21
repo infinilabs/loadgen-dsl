@@ -1,25 +1,202 @@
-use loadgen_dsl_parser::{
-    error::{Error, Result},
-    lex::LexFlag,
-    terminated::{Pair, Terminated},
-    token::*,
-    Parse, Parser, Peek,
+#[path = "token.rs"]
+mod token;
+
+use crate::{
+    error::Result,
+    parser::{Delimiter, Parse, Parser, Peek, Token},
 };
+use std::fmt;
+
+pub use {crate::lexer::Span, token::*};
+
+pub trait Spanned {
+    fn span(&self) -> Span;
+}
 
 #[derive(Clone, Debug)]
-pub enum Expr {
-    Lit(ExprLit),
-    Array(ExprArray),
-    Object(ExprObject),
-    Unary(ExprUnary),
-    Binary(ExprBinary),
-    Funcall(ExprFuncall),
-    Paren(ExprParen),
+pub struct Terminated<T, P> {
+    pub(crate) elems: Vec<(T, P)>,
+    pub(crate) trailing: Option<Box<T>>,
+}
+
+impl<T, P> Terminated<T, P> {
+    pub fn items(&self) -> impl Iterator<Item = &T> {
+        self.elems
+            .iter()
+            .map(|(t, _)| t)
+            .chain(self.trailing.as_deref().into_iter())
+    }
+}
+
+impl<T, P> Parse for Terminated<T, P>
+where
+    T: Parse,
+    P: Token,
+{
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        parser.parse_terminated()
+    }
+}
+
+impl<T, P> Spanned for Terminated<T, P>
+where
+    T: Spanned,
+    P: Spanned,
+{
+    fn span(&self) -> Span {
+        let Some(start) = self.elems.first() else {
+            debug_assert!(self.trailing.is_none());
+            return Span::dummy();
+        };
+        let end = self
+            .trailing
+            .as_deref()
+            .map(T::span)
+            .or_else(|| self.elems.last().map(|(_, p)| p.span()))
+            .unwrap();
+        start.0.span().join(end)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Delimited<T, P> {
+    pub delim: P,
+    pub content: T,
+}
+
+impl<T, P> Parse for Delimited<T, P>
+where
+    T: Parse,
+    P: Delimiter,
+{
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let (delim, content) = parser.parse_delimited()?;
+        Ok(Self { delim, content })
+    }
+}
+
+impl<T, P> Spanned for Delimited<T, P>
+where
+    T: Spanned,
+    P: Spanned,
+{
+    fn span(&self) -> Span {
+        self.delim.span()
+    }
+}
+
+#[derive(Clone)]
+pub struct Separated<T, P>(pub Terminated<T, P>);
+
+impl<T, P> Parse for Separated<T, P>
+where
+    T: Parse,
+    P: Token,
+{
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        parser.parse_seperated().map(Self)
+    }
+}
+
+impl<T, P> fmt::Debug for Separated<T, P>
+where
+    T: fmt::Debug,
+    P: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T, P> Spanned for Separated<T, P>
+where
+    T: Spanned,
+    P: Spanned,
+{
+    fn span(&self) -> Span {
+        self.0.span()
+    }
+}
+
+macro_rules! define_ast_enum {
+    ($(#[$attr:meta])*
+    $vis:vis enum $name:ident {
+        $($var:ident($ty:ty),)*
+    }) => {
+        $(#[$attr])*
+        #[derive(Clone, Debug)]
+        $vis enum $name {
+            $($var($ty),)*
+        }
+
+        impl Spanned for $name {
+            fn span(&self) -> Span {
+                match self {
+                    $($name::$var(t) => t.span(),)*
+                }
+            }
+        }
+    };
+}
+
+macro_rules! define_ast_struct {
+    (#[span = $span:tt]
+    $(#[$attr:meta])*
+    $vis:vis struct $name:ident {
+        $($field:ident: $ty:ty,)*
+    }) => {
+        $(#[$attr])*
+        #[derive(Clone, Debug)]
+        $vis struct $name {
+            $(pub $field: $ty,)*
+        }
+
+        impl Spanned for $name {
+            define_ast_struct!(@impl_spanned $span);
+        }
+    };
+    (@impl_spanned $span:ident) => {
+        fn span(&self) -> Span {
+            self.$span.span()
+        }
+    };
+    (@impl_spanned ($start:ident, $end:ident)) => {
+        fn span(&self) -> Span {
+            self.$start.span().join(self.$end.span())
+        }
+    };
+}
+
+define_ast_enum!(
+    pub enum Expr {
+        Array(ExprArray),
+        Binary(ExprBinary),
+        Funcall(ExprFuncall),
+        Lit(ExprLit),
+        Object(ExprObject),
+        Paren(ExprParen),
+        Unary(ExprUnary),
+    }
+);
+
+impl Expr {
+    fn peek() -> impl Peek {
+        #[derive(Clone, Copy)]
+        struct ExprDisplay;
+        impl Peek for ExprDisplay {
+            fn display(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("expression")
+            }
+            fn peek(&self, _: &mut crate::parser::Cursor) -> bool {
+                unreachable!()
+            }
+        }
+        ExprDisplay
+    }
 }
 
 impl Parse for Expr {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        parser.set_flag(LexFlag::ALLOW_REGEXP);
         let left = if parser.peek(ExprLit::peek()) {
             parser.parse().map(Self::Lit)
         } else if parser.peek(Bracket) {
@@ -33,7 +210,7 @@ impl Parse for Expr {
         } else if parser.peek(Paren) {
             parser.parse().map(Self::Paren)
         } else {
-            return Err(Error::expected(parser.advance()?.span(), "expression"));
+            return parser.unexpected_token(Self::peek());
         }?;
         if parser.peek(BinaryOp::peek()) {
             Ok(Expr::Binary(ExprBinary {
@@ -47,47 +224,55 @@ impl Parse for Expr {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum ExprLit {
-    Null(Null),
-    Bool(LitBool),
-    Number(LitNumber),
-    String(LitString),
-    Regexp(LitRegexp),
+define_ast_enum!(
+    pub enum ExprLit {
+        Bool(LitBool),
+        Float(LitFloat),
+        Integer(LitInteger),
+        Null(Null),
+        Regexp(LitRegexp),
+        String(LitString),
+    }
+);
+
+impl ExprLit {
+    fn peek() -> impl Peek {
+        LitBool
+            .or(LitFloat)
+            .or(LitInteger)
+            .or(Null)
+            .or(LitRegexp)
+            .or(LitString)
+    }
 }
 
 impl Parse for ExprLit {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        if parser.peek(Null) {
-            parser.parse().map(Self::Null)
-        } else if parser.peek(LitBool) {
+        if parser.peek(LitBool) {
             parser.parse().map(Self::Bool)
-        } else if parser.peek(LitNumber) {
-            parser.parse().map(Self::Number)
-        } else if parser.peek(LitString) {
-            parser.parse().map(Self::String)
+        } else if parser.peek(LitFloat) {
+            parser.parse().map(Self::Float)
+        } else if parser.peek(LitInteger) {
+            parser.parse().map(Self::Integer)
+        } else if parser.peek(Null) {
+            parser.parse().map(Self::Null)
         } else if parser.peek(LitRegexp) {
             parser.parse().map(Self::Regexp)
+        } else if parser.peek(LitString) {
+            parser.parse().map(Self::String)
         } else {
-            Err(Error::expected_token(
-                parser.advance()?.span(),
-                Self::peek(),
-            ))
+            parser.unexpected_token(Self::peek())
         }
     }
 }
 
-impl ExprLit {
-    fn peek() -> impl Peek {
-        Null.or(LitBool).or(LitNumber).or(LitString).or(LitRegexp)
+define_ast_struct!(
+    #[span = bracket_token]
+    pub struct ExprArray {
+        bracket_token: Bracket,
+        elems: Terminated<Expr, Comma>,
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExprArray {
-    pub bracket_token: Bracket,
-    pub elems: Terminated<Expr, Comma>,
-}
+);
 
 impl Parse for ExprArray {
     fn parse(parser: &mut Parser) -> Result<Self> {
@@ -99,11 +284,13 @@ impl Parse for ExprArray {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ExprObject {
-    pub brace_token: Brace,
-    pub fields: Terminated<Field, Comma>,
-}
+define_ast_struct!(
+    #[span = brace_token]
+    pub struct ExprObject {
+        brace_token: Brace,
+        fields: Terminated<Field, Comma>,
+    }
+);
 
 impl Parse for ExprObject {
     fn parse(parser: &mut Parser) -> Result<Self> {
@@ -115,12 +302,14 @@ impl Parse for ExprObject {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Field {
-    pub key: FieldKey,
-    pub colon_token: Colon,
-    pub value: Box<Expr>,
-}
+define_ast_struct!(
+    #[span = (key, value)]
+    pub struct Field {
+        key: FieldKey,
+        colon_token: Colon,
+        value: Box<Expr>,
+    }
+);
 
 impl Parse for Field {
     fn parse(parser: &mut Parser) -> Result<Self> {
@@ -135,10 +324,17 @@ impl Parse for Field {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum FieldKey {
-    Path(Path),
-    String(LitString),
+define_ast_enum!(
+    pub enum FieldKey {
+        Path(Path),
+        String(LitString),
+    }
+);
+
+impl FieldKey {
+    fn peek() -> impl Peek {
+        Ident.or(LitString)
+    }
 }
 
 impl Parse for FieldKey {
@@ -148,50 +344,33 @@ impl Parse for FieldKey {
         } else if parser.peek(LitString) {
             parser.parse().map(Self::String)
         } else {
-            Err(Error::expected_token(
-                parser.advance()?.span(),
-                Self::peek(),
-            ))
+            parser.unexpected_token(Self::peek())
         }
     }
 }
 
-impl FieldKey {
-    fn peek() -> impl Peek {
-        Ident.or(LitString)
+define_ast_struct!(
+    #[span = segments]
+    pub struct Path {
+        segments: Terminated<Ident, Dot>,
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct Path {
-    pub segments: Terminated<Ident, Dot>,
-}
+);
 
 impl Parse for Path {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        let mut prev = Some(parser.parse::<Ident>()?);
-        let segments = std::iter::from_fn(|| {
-            tryb!({
-                let Some(id) = prev.take() else { return Ok(None) };
-                if let Some(dot) = parser.parse::<Option<Dot>>()? {
-                    prev = Some(parser.parse()?);
-                    Ok(Some(Pair::Terminated(id, dot)))
-                } else {
-                    Ok(Some(Pair::End(id)))
-                }
-            })
-            .transpose()
+        Ok(Self {
+            segments: parser.parse_seperated()?,
         })
-        .collect::<Result<_>>()?;
-        Ok(Self { segments })
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ExprUnary {
-    pub op: UnaryOp,
-    pub elem: Box<Expr>,
-}
+define_ast_struct!(
+    #[span = (op, elem)]
+    pub struct ExprUnary {
+        op: UnaryOp,
+        elem: Box<Expr>,
+    }
+);
 
 impl Parse for ExprUnary {
     fn parse(parser: &mut Parser) -> Result<Self> {
@@ -201,24 +380,27 @@ impl Parse for ExprUnary {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum UnaryOp {
-    Neg(Minus),
-    Not(Not),
-    Eq(Eq),
-    Ge(Ge),
-    Gt(Gt),
-    Le(Le),
-    Lt(Lt),
+define_ast_enum!(
+    pub enum UnaryOp {
+        Eq(EqEq),
+        Ge(Ge),
+        Gt(Gt),
+        Le(Le),
+        Lt(Lt),
+        Neg(Minus),
+        Not(Not),
+    }
+);
+
+impl UnaryOp {
+    fn peek() -> impl Peek {
+        EqEq.or(Ge).or(Gt).or(Le).or(Lt).or(Minus).or(Not)
+    }
 }
 
 impl Parse for UnaryOp {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        if parser.peek(Minus) {
-            parser.parse().map(Self::Neg)
-        } else if parser.peek(Not) {
-            parser.parse().map(Self::Not)
-        } else if parser.peek(Eq) {
+        if parser.peek(EqEq) {
             parser.parse().map(Self::Eq)
         } else if parser.peek(Ge) {
             parser.parse().map(Self::Ge)
@@ -228,27 +410,24 @@ impl Parse for UnaryOp {
             parser.parse().map(Self::Le)
         } else if parser.peek(Lt) {
             parser.parse().map(Self::Lt)
+        } else if parser.peek(Minus) {
+            parser.parse().map(Self::Neg)
+        } else if parser.peek(Not) {
+            parser.parse().map(Self::Not)
         } else {
-            Err(Error::expected_token(
-                parser.advance()?.span(),
-                Self::peek(),
-            ))
+            parser.unexpected_token(Self::peek())
         }
     }
 }
 
-impl UnaryOp {
-    fn peek() -> impl Peek {
-        Minus.or(Not).or(Eq).or(Ge).or(Gt).or(Le).or(Lt)
+define_ast_struct!(
+    #[span = (left, right)]
+    pub struct ExprBinary {
+        left: Box<Expr>,
+        op: BinaryOp,
+        right: Box<Expr>,
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExprBinary {
-    pub left: Box<Expr>,
-    pub op: BinaryOp,
-    pub right: Box<Expr>,
-}
+);
 
 impl Parse for ExprBinary {
     fn parse(parser: &mut Parser) -> Result<Self> {
@@ -259,10 +438,17 @@ impl Parse for ExprBinary {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum BinaryOp {
-    And(And),
-    Or(Or),
+define_ast_enum!(
+    pub enum BinaryOp {
+        And(And),
+        Or(Or),
+    }
+);
+
+impl BinaryOp {
+    fn peek() -> impl Peek {
+        And.or(Or)
+    }
 }
 
 impl Parse for BinaryOp {
@@ -272,26 +458,19 @@ impl Parse for BinaryOp {
         } else if parser.peek(Or) {
             parser.parse().map(Self::Or)
         } else {
-            Err(Error::expected_token(
-                parser.advance()?.span(),
-                Self::peek(),
-            ))
+            parser.unexpected_token(Self::peek())
         }
     }
 }
 
-impl BinaryOp {
-    fn peek() -> impl Peek {
-        And.or(Or)
+define_ast_struct!(
+    #[span =  (ident, params)]
+    pub struct ExprFuncall {
+        ident: Ident,
+        paren_token: Paren,
+        params: Terminated<Expr, Comma>,
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExprFuncall {
-    pub ident: Ident,
-    pub paren_token: Paren,
-    pub params: Terminated<Expr, Comma>,
-}
+);
 
 impl Parse for ExprFuncall {
     fn parse(parser: &mut Parser) -> Result<Self> {
@@ -305,11 +484,13 @@ impl Parse for ExprFuncall {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ExprParen {
-    pub paren_token: Paren,
-    pub elem: Box<Expr>,
-}
+define_ast_struct!(
+    #[span = paren_token]
+    pub struct ExprParen {
+        paren_token: Paren,
+        elem: Box<Expr>,
+    }
+);
 
 impl Parse for ExprParen {
     fn parse(parser: &mut Parser) -> Result<Self> {
