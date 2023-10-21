@@ -1,12 +1,18 @@
 [workspace]
 members = ["compiler", "parser"]
 
-[package]
-name = "loadgen-dsl"
+[workspace.package]
 version = "0.0.0"
 edition = "2021"
 authors = ["INFINI Labs <hello@infini.ltd>"]
 license = "AGPL-3.0+"
+
+[package]
+name = "loadgen-dsl"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

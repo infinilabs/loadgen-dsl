@@ -1,9 +1,9 @@
 [package]
 name = "loadgen-dsl-compiler"
-version = "0.0.0"
-edition = "2021"
-authors = ["INFINI Labs <hello@infini.ltd>"]
-license = "AGPL-3.0+"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 loadgen-dsl-parser = { path = "../parser" }
