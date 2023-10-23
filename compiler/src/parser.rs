@@ -31,6 +31,25 @@ where
     }
 }
 
+impl<T> Parse for Vec<T>
+where
+    T: Parse,
+{
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let mut elems = Vec::new();
+        loop {
+            if parser.is_eot() {
+                break;
+            }
+            elems.push(parser.parse()?);
+            if parser.is_eot() {
+                break;
+            }
+        }
+        Ok(elems)
+    }
+}
+
 pub(crate) trait Delimiter: 'static + Copy + Parse {
     const RIGHT: LexKind;
     fn combine(&mut self, right: LexToken);

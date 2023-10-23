@@ -13,6 +13,19 @@ pub trait Spanned {
     fn span(&self) -> Span;
 }
 
+impl<T> Spanned for Vec<T>
+where
+    T: Spanned,
+{
+    fn span(&self) -> Span {
+        let Some(first) = self.first() else {
+            return Span::dummy();
+        };
+        let last = self.last().unwrap();
+        first.span().join(last.span())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Terminated<T, P> {
     pub(crate) elems: Vec<(T, P)>,
@@ -155,6 +168,11 @@ macro_rules! define_ast_struct {
             define_ast_struct!(@impl_spanned $span);
         }
     };
+    (@impl_spanned _span) => {
+        fn span(&self) -> Span {
+            self._span()
+        }
+    };
     (@impl_spanned $span:ident) => {
         fn span(&self) -> Span {
             self.$span.span()
@@ -165,6 +183,73 @@ macro_rules! define_ast_struct {
             self.$start.span().join(self.$end.span())
         }
     };
+}
+
+define_ast_enum!(
+    pub enum Dsl {
+        Brief(DslBrief),
+        Full(DslFull),
+    }
+);
+
+impl Dsl {
+    fn peek() -> impl Peek {
+        LitInteger.or(Brace).or(Ident).or(LitString)
+    }
+}
+
+impl Parse for Dsl {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if parser.peek(LitInteger) || parser.peek(Brace) {
+            parser.parse().map(Self::Brief)
+        } else if parser.peek(Ident) || parser.peek(LitString) {
+            parser.parse().map(Self::Full)
+        } else {
+            parser.unexpected_token(Self::peek())
+        }
+    }
+}
+
+define_ast_struct!(
+    #[span = _span]
+    pub struct DslBrief {
+        status: Option<LitInteger>,
+        body: ExprObject,
+    }
+);
+
+impl DslBrief {
+    fn _span(&self) -> Span {
+        if let Some(status) = self.status.as_ref() {
+            status.span().join(self.body.span())
+        } else {
+            self.body.span()
+        }
+    }
+}
+
+impl Parse for DslBrief {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        Ok(Self {
+            status: parser.parse()?,
+            body: parser.parse()?,
+        })
+    }
+}
+
+define_ast_struct!(
+    #[span = fields]
+    pub struct DslFull {
+        fields: Vec<Field>,
+    }
+);
+
+impl Parse for DslFull {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        Ok(Self {
+            fields: parser.parse()?,
+        })
+    }
 }
 
 define_ast_enum!(

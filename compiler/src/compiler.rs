@@ -39,9 +39,34 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&self, ast: &Expr) -> Result<Yaml> {
-        ast.compile_assertion(&self.context, "_ctx.response.body_json")
-            .map(Yaml::from)
+    pub fn compile(&self, ast: &Dsl) -> Result<Yaml> {
+        Ok(match ast {
+            Dsl::Brief(ast) => {
+                let body = ast
+                    .body
+                    .compile_assertion(&self.context, "_ctx.response.body_json")?;
+                if let Some(status) = ast.status.as_ref() {
+                    let status = yaml!({["equals"]: {["_ctx.response.status"]: status.value()}});
+                    yaml!({["and"]: [status, body]})
+                } else {
+                    body
+                }
+            }
+            Dsl::Full(ast) => {
+                let assertions = ast
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        let key = f.path.to_field();
+                        f.value
+                            .compile_assertion(&self.context, &key)
+                            .map(Yaml::from)
+                    })
+                    .collect::<Result<Sequence>>()?;
+                yaml!({ ["and"]: assertions })
+            }
+        }
+        .into())
     }
 }
 
