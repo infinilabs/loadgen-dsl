@@ -4,7 +4,6 @@ use crate::{
     lexer::{LexKind, LexToken, Span},
     parser::{Cursor, Delimiter, Parse, Parser, Token, TokenMarker},
 };
-use std::fmt;
 
 macro_rules! impl_extra {
     ($vis:vis $name:ident) => {
@@ -46,8 +45,8 @@ macro_rules! define_token {
         impl_extra!($vis $name);
 
         impl Token for $name {
-            fn display(f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str(concat!("`", $display, "`"))
+            fn display() -> &'static str {
+                concat!("`", $display, "`")
             }
 
             fn peek(cur: &mut Cursor) -> bool {
@@ -202,8 +201,8 @@ macro_rules! define_token_with_source {
         impl_extra!($vis $name);
 
         impl Token for $name {
-            fn display(f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(LexKind::$kind.display())
+            fn display() -> &'static str {
+                LexKind::$kind.display()
             }
 
             fn peek(cur: &mut Cursor) -> bool {
@@ -313,8 +312,8 @@ impl LitBool {
 }
 
 impl Token for LitBool {
-    fn display(f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("literal boolean")
+    fn display() -> &'static str {
+        "literal boolean"
     }
 
     fn peek(cur: &mut Cursor) -> bool {

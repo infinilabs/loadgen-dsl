@@ -1,14 +1,26 @@
-use crate::{ast::*, error::Result};
+use crate::{
+    ast::*,
+    error::{Error, Result},
+};
 use serde_yaml::{Mapping, Sequence, Value as Yaml};
 
-pub(crate) trait Compilable {
-    fn compile_value(&self) -> Result<Yaml> {
-        todo!()
+pub(crate) trait Compilable: Spanned {
+    fn display() -> &'static str;
+
+    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+        let _ = ctx;
+        Err(Error::new(
+            self.span(),
+            format!("cannot use {} as value", Self::display()),
+        ))
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let _ = (ctx, field);
-        todo!()
+        Err(Error::new(
+            self.span(),
+            format!("cannot use {} as assertion", Self::display()),
+        ))
     }
 }
 
@@ -32,11 +44,19 @@ impl Compiler {
 }
 
 impl Compilable for Expr {
-    fn compile_value(&self) -> Result<Yaml> {
+    fn display() -> &'static str {
+        "expression"
+    }
+
+    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
         match self {
-            Self::Lit(l) => l.compile_value(),
-            Self::Unary(u) => u.compile_value(),
-            _ => todo!(),
+            Self::Array(t) => t.compile_value(ctx),
+            Self::Binary(t) => t.compile_value(ctx),
+            Self::Funcall(t) => t.compile_value(ctx),
+            Self::Lit(t) => t.compile_value(ctx),
+            Self::Object(t) => t.compile_value(ctx),
+            Self::Paren(t) => t.compile_value(ctx),
+            Self::Unary(t) => t.compile_value(ctx),
         }
     }
 
@@ -54,7 +74,11 @@ impl Compilable for Expr {
 }
 
 impl Compilable for ExprLit {
-    fn compile_value(&self) -> Result<Yaml> {
+    fn display() -> &'static str {
+        "literal expression"
+    }
+
+    fn compile_value(&self, _ctx: &Context) -> Result<Yaml> {
         Ok(match self {
             Self::Bool(t) => Yaml::from(t.value()),
             Self::Float(t) => Yaml::from(t.value()),
@@ -65,16 +89,16 @@ impl Compilable for ExprLit {
         })
     }
 
-    fn compile_assertion(&self, _ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         Ok(match self {
             Self::Regexp(_) => yaml!({
                 ["regexp"]: {
-                    [field]: self.compile_value()?,
+                    [field]: self.compile_value(ctx)?,
                 },
             }),
             _ => yaml!({
                 ["equals"]: {
-                    [field]: self.compile_value()?,
+                    [field]: self.compile_value(ctx)?,
                 },
             }),
         })
@@ -82,6 +106,10 @@ impl Compilable for ExprLit {
 }
 
 impl Compilable for ExprArray {
+    fn display() -> &'static str {
+        "array expression"
+    }
+
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let assertions = self
             .elems
@@ -97,6 +125,10 @@ impl Compilable for ExprArray {
 }
 
 impl Compilable for ExprObject {
+    fn display() -> &'static str {
+        "object expression"
+    }
+
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let assertions = self
             .fields
@@ -133,25 +165,38 @@ impl FieldKey {
     }
 }
 
+impl ExprUnary {
+    fn neg(&self, ctx: &Context) -> Result<Yaml> {
+        match self.elem.compile_value(ctx)? {
+            Yaml::Number(n) => Ok(n
+                .as_i64()
+                .map(|i| Yaml::from(-i))
+                .or_else(|| n.as_f64().map(|i| Yaml::from(-i)))
+                .unwrap()),
+            _ => Err(Error::new(
+                self.span(),
+                format!("can only apply negation to numbers"),
+            )),
+        }
+    }
+}
+
 impl Compilable for ExprUnary {
-    fn compile_value(&self) -> Result<Yaml> {
-        Ok(match self.op {
-            UnaryOp::Neg(_) => match self.elem.compile_value()? {
-                Yaml::Number(n) => n
-                    .as_i64()
-                    .map(|i| Yaml::from(-i))
-                    .or_else(|| n.as_f64().map(|i| Yaml::from(-i)))
-                    .unwrap(),
-                _ => todo!(),
-            },
-            _ => todo!(),
-        })
+    fn display() -> &'static str {
+        "unary expression"
+    }
+
+    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+        match self.op {
+            UnaryOp::Neg(_) => self.neg(ctx),
+            _ => Err(Error::new(self.span(), "cannot use assertion as value")),
+        }
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         Ok(match self.op {
-            UnaryOp::Eq(_) => yaml!({["equals"]: self.elem.compile_value()?}),
-            UnaryOp::Neg(_) => todo!(),
+            UnaryOp::Eq(_) => yaml!({["equals"]: self.elem.compile_value(ctx)?}),
+            UnaryOp::Neg(_) => yaml!({["equals"]: self.neg(ctx)?}),
             UnaryOp::Not(_) => yaml!({["not"]: self.elem.compile_assertion(ctx, field)?}),
             _ => {
                 let op = match self.op {
@@ -161,13 +206,17 @@ impl Compilable for ExprUnary {
                     UnaryOp::Lt(_) => "lt",
                     _ => unreachable!(),
                 };
-                yaml!({["range"]: {[field]: {[op]: self.elem.compile_value()?}}})
+                yaml!({["range"]: {[field]: {[op]: self.elem.compile_value(ctx)?}}})
             }
         })
     }
 }
 
 impl Compilable for ExprBinary {
+    fn display() -> &'static str {
+        "binary expression"
+    }
+
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let op = match self.op {
             BinaryOp::And(_) => "and",
@@ -183,14 +232,32 @@ impl Compilable for ExprBinary {
 }
 
 impl Compilable for ExprFuncall {
+    fn display() -> &'static str {
+        "function call expression"
+    }
+
+    fn compile_value(&self, _ctx: &Context) -> Result<Yaml> {
+        Err(Error::new(
+            self.span(),
+            format!("{} is not yet supported as value", Self::display()),
+        ))
+    }
+
     fn compile_assertion(&self, _ctx: &Context, _field: &str) -> Result<Mapping> {
-        todo!()
+        Err(Error::new(
+            self.span(),
+            format!("{} is not yet supported as assertion", Self::display()),
+        ))
     }
 }
 
 impl Compilable for ExprParen {
-    fn compile_value(&self) -> Result<Yaml> {
-        self.elem.compile_value()
+    fn display() -> &'static str {
+        Expr::display()
+    }
+
+    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+        self.elem.compile_value(ctx)
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {

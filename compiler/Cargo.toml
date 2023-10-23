@@ -6,4 +6,6 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+miette = "5.10"
 serde_yaml = "0.9"
+thiserror = "1.0"

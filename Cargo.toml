@@ -20,6 +20,7 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = "1.0"
 loadgen-dsl-compiler = { path = "compiler" }
+miette = { version = "5.10", features = ["fancy"] }
 serde = "1.0"
 serde_yaml = "0.9"
 wee_alloc = "0.4"

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use miette::{MietteHandlerOpts, Result};
 
 mod fii;
 
@@ -18,8 +18,16 @@ unsafe extern "C" fn _process(ptr: u64) -> u64 {
     })
 }
 
+#[export_name = "init"]
+extern "C" fn _init() {
+    miette::set_hook(Box::new(|_| {
+        Box::new(MietteHandlerOpts::new().color(false).unicode(true).build())
+    }))
+    .unwrap();
+}
+
 fn compile(input: &str) -> Result<String> {
-    Ok(serde_yaml::to_string(&loadgen_dsl_compiler::compile(
-        input,
-    )?)?)
+    let output = loadgen_dsl_compiler::compile(input)
+        .map_err(|e| miette::Error::new(e).with_source_code(input.to_owned()))?;
+    Ok(serde_yaml::to_string(&output).unwrap())
 }

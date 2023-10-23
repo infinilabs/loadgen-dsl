@@ -1,22 +1,26 @@
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
+use thiserror::Error;
+
 use crate::{lexer::Span, parser::Peek};
 use std::fmt;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("compile errors")]
 pub struct Error {
     pub(crate) msgs: Vec<ErrorMsg>,
 }
 
 impl Error {
-    pub(crate) fn new<S>(span: Span, kind: S) -> Self
+    pub(crate) fn new<S>(span: Span, desc: S) -> Self
     where
         S: Into<String>,
     {
         Self {
             msgs: vec![ErrorMsg {
                 span,
-                kind: Box::from(kind.into()),
+                desc: Box::from(desc.into()),
             }],
         }
     }
@@ -33,21 +37,24 @@ impl Error {
     }
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for msg in self.msgs.iter() {
-            writeln!(f, "{} at {}:{}", msg.kind, msg.span.start, msg.span.end)?;
-        }
-        Ok(())
+impl Diagnostic for Error {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(self.msgs.iter().map(|msg| {
+            LabeledSpan::new_with_span(Some(msg.desc.clone().into()), msg.span)
+        })))
     }
 }
-
-impl std::error::Error for Error {}
 
 #[derive(Debug)]
 pub(crate) struct ErrorMsg {
     pub span: Span,
-    pub kind: Box<str>,
+    pub desc: Box<str>,
+}
+
+impl From<Span> for SourceSpan {
+    fn from(value: Span) -> Self {
+        SourceSpan::from((value.start as usize, (value.end - value.start) as usize))
+    }
 }
 
 struct DisplayPeek<P>(P);

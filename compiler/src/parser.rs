@@ -60,7 +60,7 @@ impl Peek for LexKind {
 }
 
 pub(crate) trait Token: 'static + Parse {
-    fn display(f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn display() -> &'static str;
     fn peek(cur: &mut Cursor) -> bool;
 }
 
@@ -263,7 +263,7 @@ where
     }
 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        T::display(f)
+        f.write_str(T::display())
     }
 }
 

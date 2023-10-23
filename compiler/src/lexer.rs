@@ -344,7 +344,7 @@ impl<'a> Lexer<'a> {
     fn error_from(&mut self, start: usize, kind: &'static str) {
         self.errors.push(ErrorMsg {
             span: self.span_from(start),
-            kind: kind.into(),
+            desc: kind.into(),
         })
     }
 
@@ -508,7 +508,7 @@ mod tests {
         };
         // LexToken with errors
         ($lexer:ident,
-        ($kind:ident[$start:expr, $end:expr] $(, $Ekind:ident[$Estart:expr, $Eend:expr])* $(,)*)
+        ($kind:ident[$start:expr, $end:expr] $(, $Edesc:ident[$Estart:expr, $Eend:expr])* $(,)*)
         $($rest:tt)*) => {
             let (token, err) = $lexer.parse();
             // Validate token
@@ -517,7 +517,7 @@ mod tests {
             // Validate errors
             let mut err = err.into_iter().flat_map(|e| e.msgs);
             $(let msg = err.next().expect("too few errors");
-            assert_eq!(&*msg.kind, $Ekind);
+            assert_eq!(&*msg.desc, $Edesc);
             assert_eq!(msg.span, Span::new($Estart, $Eend));)*
             assert!(err.next().is_none(), "too many errros");
             // Process rest tokens

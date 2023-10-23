@@ -65,9 +65,15 @@ func loadPlugins(plugins [][]byte, input string) (output string, err error) {
 }
 
 func callPlugin(ctx context.Context, mod wasmAPI.Module, input string) (output string, err error) {
+	init := mod.ExportedFunction("init")
 	alloc := mod.ExportedFunction("allocate")
 	free := mod.ExportedFunction("deallocate")
 	process := mod.ExportedFunction("process")
+
+	// initialize
+	if init != nil {
+		init.Call(ctx)
+	}
 
 	// write input
 	inputSize := uint32(len(input))

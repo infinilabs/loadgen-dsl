@@ -11,14 +11,14 @@ unsafe extern "C" fn _deallocate(ptr: u64) {
     drop(decode_ptr(ptr));
 }
 
-pub fn run_with<T>(f: impl FnOnce() -> anyhow::Result<T>) -> u64
+pub fn run_with<T>(f: impl FnOnce() -> miette::Result<T>) -> u64
 where
     T: Into<Vec<u8>>,
 {
     encode_ptr(
         f().map(T::into)
             .map(Vec::into_boxed_slice)
-            .map_err(|e| e.to_string())
+            .map_err(|e| format!("{e:?}"))
             .map_err(String::into_boxed_str),
     )
 }
