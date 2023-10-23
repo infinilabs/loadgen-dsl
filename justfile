@@ -16,6 +16,10 @@ build:
 run input=example: release
     go run main.go -p dist/loadgen_dsl.wasm -i {{input}}
 
+# Run binary
+run-bin input=example: release
+    cargo run --bin=loadgen-dsl -- {{input}}
+
 # Update bundle WASM binary
 release:
     cargo build --target wasm32-unknown-unknown --release

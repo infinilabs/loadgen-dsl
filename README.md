@@ -45,7 +45,7 @@ and:
 grammer    ::= brief | full
 brief      ::= status? object EOF
 full       ::= pair+ EOF
-status     ::= number
+status     ::= integer
 expr       ::= expr1 (infixop expr1)*
 expr1      ::= literal
              | array
@@ -55,14 +55,16 @@ expr1      ::= literal
              | '(' expr ')'
 object     ::= '{' fields '}'
 fields     ::= (pair (',' pair)* ','?)?
-pair       ::= (key | string) ':' expr
-key        ::= name ('.' name)+
+pair       ::= path ':' expr
+path       ::= key ('.' key)*
+key        ::= name | string | integer
 array      ::= '[' params ']'
 funcall    ::= name '(' params ')'
 params     ::= (expr (',' expr)* ','?)?
 literal    ::= null
              | boolean
-             | number
+             | integer
+             | float
              | regex
              | string
 ignore     ::= whitespace
@@ -91,9 +93,10 @@ prefixop   ::= '-'
 infixop    ::= 'and' | 'or'
 null       ::= 'null'
 boolean    ::= 'true' | 'false'
-number     ::= digit+
-               (. digit+)?
-               (('e' | 'E') ('+' | '-')? digit+)?
+integer    ::= digit+
+exponent   ::= ('e' | 'E') ('+' | '-')? integer
+float      ::= integer exponent
+             | integer '.' integer exponent?
 digit      ::= [0-9]
 regex      ::= '/' ('\/' | char - '/')+ '/'
 string     ::= '"' (escape | char - '"')* '"'

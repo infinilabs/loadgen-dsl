@@ -18,7 +18,6 @@ license.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-anyhow = "1.0"
 loadgen-dsl-compiler = { path = "compiler" }
 miette = { version = "5.10", features = ["fancy"] }
 serde = "1.0"

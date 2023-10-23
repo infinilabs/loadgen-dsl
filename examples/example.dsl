@@ -7,11 +7,11 @@
     // Regular expression
     team: /dev.*/ or /doc.*/,
     // Nested object
-    todo: {
+    todo.1: {
         pizza: "inprogress",
     },
     // Flatten object
-    todo.dsl: "inprogress",
+    todo.2.dsl: "inprogress",
     // Nested array
     likes: ["anime", "sports"],
 }

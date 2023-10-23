@@ -303,9 +303,9 @@ impl Parse for ExprObject {
 }
 
 define_ast_struct!(
-    #[span = (key, value)]
+    #[span = (path, value)]
     pub struct Field {
-        key: FieldKey,
+        path: Path,
         colon_token: Colon,
         value: Box<Expr>,
     }
@@ -313,46 +313,21 @@ define_ast_struct!(
 
 impl Parse for Field {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        let name = parser.parse()?;
+        let path = parser.parse()?;
         let colon_token = parser.parse()?;
         let value = parser.parse()?;
         Ok(Self {
-            key: name,
+            path,
             colon_token,
             value,
         })
     }
 }
 
-define_ast_enum!(
-    pub enum FieldKey {
-        Path(Path),
-        String(LitString),
-    }
-);
-
-impl FieldKey {
-    fn peek() -> impl Peek {
-        Ident.or(LitString)
-    }
-}
-
-impl Parse for FieldKey {
-    fn parse(parser: &mut Parser) -> Result<Self> {
-        if parser.peek(Ident) {
-            parser.parse().map(Self::Path)
-        } else if parser.peek(LitString) {
-            parser.parse().map(Self::String)
-        } else {
-            parser.unexpected_token(Self::peek())
-        }
-    }
-}
-
 define_ast_struct!(
     #[span = segments]
     pub struct Path {
-        segments: Terminated<Ident, Dot>,
+        segments: Terminated<Key, Dot>,
     }
 );
 
@@ -361,6 +336,34 @@ impl Parse for Path {
         Ok(Self {
             segments: parser.parse_seperated()?,
         })
+    }
+}
+
+define_ast_enum!(
+    pub enum Key {
+        Array(LitInteger),
+        Ident(Ident),
+        String(LitString),
+    }
+);
+
+impl Key {
+    fn peek() -> impl Peek {
+        LitInteger.or(Ident).or(LitString)
+    }
+}
+
+impl Parse for Key {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if parser.peek(LitInteger) {
+            parser.parse().map(Self::Array)
+        } else if parser.peek(Ident) {
+            parser.parse().map(Self::Ident)
+        } else if parser.peek(LitString) {
+            parser.parse().map(Self::String)
+        } else {
+            parser.unexpected_token(Self::peek())
+        }
     }
 }
 
@@ -464,7 +467,7 @@ impl Parse for BinaryOp {
 }
 
 define_ast_struct!(
-    #[span =  (ident, params)]
+    #[span = (ident, params)]
     pub struct ExprFuncall {
         ident: Ident,
         paren_token: Paren,

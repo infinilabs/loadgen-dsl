@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     ast::*,
     error::{Error, Result},
@@ -134,7 +136,7 @@ impl Compilable for ExprObject {
             .fields
             .items()
             .map(|f| {
-                let key = f.key.to_field();
+                let key = f.path.to_field();
                 f.value
                     .compile_assertion(ctx, &format!("{field}.{key}"))
                     .map(Yaml::from)
@@ -144,24 +146,28 @@ impl Compilable for ExprObject {
     }
 }
 
-impl FieldKey {
-    fn to_field(&self) -> String {
+impl Key {
+    fn to_field(&self) -> Cow<str> {
         match self {
-            Self::Path(i) => {
-                let mut segments = i.segments.items();
-                let mut name = if let Some(first) = segments.next() {
-                    first.value().into()
-                } else {
-                    String::new()
-                };
-                for seg in segments {
-                    name.push('.');
-                    name.push_str(seg.value());
-                }
-                name
-            }
-            Self::String(s) => s.value().into(),
+            Self::Array(t) => Cow::Owned(t.value().to_string()),
+            Self::Ident(t) => Cow::Borrowed(t.value()),
+            Self::String(t) => Cow::Borrowed(t.value()),
         }
+    }
+}
+
+impl Path {
+    fn to_field(&self) -> String {
+        let mut iter = self.segments.items();
+        let Some(first) = iter.next() else {
+            return String::new();
+        };
+        let mut name = first.to_field().into_owned();
+        for key in iter {
+            name.push('.');
+            name.push_str(&key.to_field());
+        }
+        name
     }
 }
 

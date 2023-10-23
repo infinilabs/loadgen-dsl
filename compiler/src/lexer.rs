@@ -9,7 +9,6 @@ const INVALID_ESCAPE: &str = "invalid escape character";
 const UNTERMINATED_STRING: &str = "unterminated string";
 const UNTERMINATED_REGEXP: &str = "unterminated regular expression";
 const MISSING_EXPONENT: &str = "missing exponent";
-const MISSING_DECIMAL: &str = "missing decimal";
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Span {
@@ -254,6 +253,10 @@ impl<'a> Lexer<'a> {
         self.cur.clone().next().unwrap_or(EOF)
     }
 
+    fn peek_ch2(&self) -> char {
+        self.cur.clone().nth(1).unwrap_or(EOF)
+    }
+
     fn advance(&mut self) -> char {
         self.cur.next().unwrap_or(EOF)
     }
@@ -471,21 +474,27 @@ impl<'a> Lexer<'a> {
     fn next_number(&mut self, first: char) -> LexKind {
         debug_assert_matches!(first, digit!());
         self.skip_digits();
-        let mut kind = LexKind::Integer;
-        if self.skip_ch('.') {
-            if !self.skip_digits() {
-                self.error(MISSING_DECIMAL);
+        let kind = if self.peek_ch() == '.' {
+            if digit(self.peek_ch2()) {
+                self.advance();
+                self.advance();
+                self.skip_digits();
+                LexKind::Float
+            } else {
+                return LexKind::Integer;
             }
-            kind = LexKind::Float;
-        }
+        } else {
+            LexKind::Integer
+        };
         if self.skip_matches(&['e', 'E']) {
             self.skip_matches(&['+', '-']);
             if !self.skip_digits() {
                 self.error(MISSING_EXPONENT);
             }
-            kind = LexKind::Float;
+            LexKind::Float
+        } else {
+            kind
         }
-        kind
     }
 }
 
@@ -652,13 +661,13 @@ mod tests {
             Integer[0, 1],
             _, Integer[2, 5],
             _, Float[6, 9],
-            _, (Float[10, 12], MISSING_DECIMAL[10, 12]),
+            _, Integer[10, 11], Dot[11, 12],
             _, Float[13, 16],
             _, Float[17, 23],
             _, (Float[24, 26], MISSING_EXPONENT[24, 26]),
             _, Float[27, 33],
-            _, (Float[34, 37], MISSING_DECIMAL[34, 36], MISSING_EXPONENT[34, 37]),
-            _, (Float[38, 42], MISSING_DECIMAL[38, 40], MISSING_EXPONENT[38, 42]),
+            _, Integer[34, 35], Dot[35, 36], Ident[36, 37],
+            _, Integer[38, 39], Dot[39, 40], Ident[40, 41], Plus[41, 42],
             Eof[42, 42],
         );
     }
