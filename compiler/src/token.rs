@@ -242,7 +242,7 @@ impl Ident {
 fn source_to_string(s: &str) -> Box<str> {
     debug_assert_matches!(s.as_bytes()[0], b'\'' | b'"' | b'/');
     debug_assert_matches!(s.as_bytes()[s.len() - 1], b'\'' | b'"' | b'/');
-    s.into()
+    s[1..s.len() - 1].into()
 }
 
 define_token_with_source!(
