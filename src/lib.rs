@@ -27,7 +27,6 @@ extern "C" fn _init() {
 }
 
 fn compile(input: &str) -> Result<String> {
-    let output = loadgen_dsl_compiler::compile(input)
-        .map_err(|e| miette::Error::new(e).with_source_code(input.to_owned()))?;
+    let output = loadgen_dsl_compiler::compile_requests(&input)?;
     Ok(serde_yaml::to_string(&output).unwrap())
 }

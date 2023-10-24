@@ -91,13 +91,13 @@ define_lex_kind!(
         Comment,
         #[display = "identifier"]
         Ident,
-        #[display = "literal string"]
+        #[display = "literal-string"]
         String,
-        #[display = "literal regular expression"]
+        #[display = "literal-regular-expression"]
         Regexp,
-        #[display = "literal integer"]
+        #[display = "literal-integer"]
         Integer,
-        #[display = "literal float"]
+        #[display = "literal-float"]
         Float,
         #[display = "unknown"]
         Unknown,

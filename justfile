@@ -1,4 +1,4 @@
-example := 'examples/example.dsl'
+example := 'examples/example.req'
 just := quote(just_executable()) + ' --justfile=' + quote(justfile())
 
 _default:

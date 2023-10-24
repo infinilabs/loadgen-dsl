@@ -102,7 +102,7 @@ impl Compilable for Expr {
 
 impl Compilable for ExprLit {
     fn display() -> &'static str {
-        "literal expression"
+        "literal-expression"
     }
 
     fn compile_value(&self, _ctx: &Context) -> Result<Yaml> {
@@ -134,7 +134,7 @@ impl Compilable for ExprLit {
 
 impl Compilable for ExprArray {
     fn display() -> &'static str {
-        "array expression"
+        "array-expression"
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
@@ -153,7 +153,7 @@ impl Compilable for ExprArray {
 
 impl Compilable for ExprObject {
     fn display() -> &'static str {
-        "object expression"
+        "object-expression"
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
@@ -214,7 +214,7 @@ impl ExprUnary {
 
 impl Compilable for ExprUnary {
     fn display() -> &'static str {
-        "unary expression"
+        "unary-expression"
     }
 
     fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
@@ -245,7 +245,7 @@ impl Compilable for ExprUnary {
 
 impl Compilable for ExprBinary {
     fn display() -> &'static str {
-        "binary expression"
+        "binary-expression"
     }
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
@@ -264,7 +264,7 @@ impl Compilable for ExprBinary {
 
 impl Compilable for ExprFuncall {
     fn display() -> &'static str {
-        "function call expression"
+        "function-call-expression"
     }
 
     fn compile_value(&self, _ctx: &Context) -> Result<Yaml> {
