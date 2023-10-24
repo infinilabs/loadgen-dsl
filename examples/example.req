@@ -1,13 +1,13 @@
-POST $[[PIZZA_SERVER]]/collection1/_doc
-{"hello": "world"}
-# 200
-# {
-#   result: "created"
+PUT $[[env.PIZZA_SERVER]]/test_create_document_$[[id]]
+# register: [{
+#   collection: "_ctx.response.body_json.collection",
+# }]
+# assert: {
+#   _ctx.response.status: 200,
+#   _ctx.response.body_json: {success: true},
 # }
 
-POST $[[PIZZA_SERVER]]/collection1/_doc
-{"hello": "loadgen"}
+POST $[[env.PIZZA_SERVER]]/$[[collection]]/_doc
+{"hello": "world"}
 # 200
-# {
-#   result: "created"
-# }
+# {result: "created"}

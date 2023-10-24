@@ -39,34 +39,45 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&self, ast: &Dsl) -> Result<Yaml> {
+    pub fn compile(&self, ast: &Dsl) -> Result<Mapping> {
         Ok(match ast {
             Dsl::Brief(ast) => {
                 let body = ast
                     .body
                     .compile_assertion(&self.context, "_ctx.response.body_json")?;
-                if let Some(status) = ast.status.as_ref() {
-                    let status = yaml!({["equals"]: {["_ctx.response.status"]: status.value()}});
-                    yaml!({["and"]: [status, body]})
+                let assertion = if let Some(status) = ast.status.as_ref() {
+                    let status = yaml!({
+                        ["equals"]: {
+                            ["_ctx.response.status"]: status.value()
+                        }
+                    });
+                    yaml!({ ["and"]: [status, body] })
                 } else {
                     body
-                }
+                };
+                yaml!({ ["assert"]: assertion })
             }
-            Dsl::Full(ast) => {
-                let assertions = ast
-                    .fields
-                    .iter()
-                    .map(|f| {
-                        let key = f.path.to_field();
-                        f.value
-                            .compile_assertion(&self.context, &key)
-                            .map(Yaml::from)
-                    })
-                    .collect::<Result<Sequence>>()?;
-                yaml!({ ["and"]: assertions })
-            }
-        }
-        .into())
+            Dsl::Full(ast) => ast
+                .fields
+                .iter()
+                .map(|f| {
+                    let key = f.path.to_field();
+                    let value = if key == "assert" {
+                        if let Expr::Object(expr) = &*f.value {
+                            compile_fields_in(expr.fields.items(), &self.context, None)?.into()
+                        } else {
+                            return Err(Error::new(
+                                f.value.span(),
+                                format!("only {} is supported as assertion", ExprObject::display()),
+                            ));
+                        }
+                    } else {
+                        f.value.compile_value(&self.context)?
+                    };
+                    Ok((Yaml::from(key), value))
+                })
+                .collect::<Result<Mapping>>()?,
+        })
     }
 }
 
@@ -137,6 +148,14 @@ impl Compilable for ExprArray {
         "array-expression"
     }
 
+    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+        self.elems
+            .items()
+            .map(|elem| elem.compile_value(ctx).map(Yaml::from))
+            .collect::<Result<Sequence>>()
+            .map(Yaml::from)
+    }
+
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         let assertions = self
             .elems
@@ -156,18 +175,20 @@ impl Compilable for ExprObject {
         "object-expression"
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
-        let assertions = self
-            .fields
+    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+        self.fields
             .items()
             .map(|f| {
                 let key = f.path.to_field();
-                f.value
-                    .compile_assertion(ctx, &format!("{field}.{key}"))
-                    .map(Yaml::from)
+                let value = f.value.compile_value(ctx)?;
+                Ok((Yaml::from(key), value))
             })
-            .collect::<Result<Sequence>>()?;
-        Ok(yaml!({ ["and"]: assertions }))
+            .collect::<Result<Mapping>>()
+            .map(Yaml::from)
+    }
+
+    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+        compile_fields_in(self.fields.items(), ctx, Some(field))
     }
 }
 
@@ -226,9 +247,9 @@ impl Compilable for ExprUnary {
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         Ok(match self.op {
-            UnaryOp::Eq(_) => yaml!({["equals"]: self.elem.compile_value(ctx)?}),
-            UnaryOp::Neg(_) => yaml!({["equals"]: self.neg(ctx)?}),
-            UnaryOp::Not(_) => yaml!({["not"]: self.elem.compile_assertion(ctx, field)?}),
+            UnaryOp::Eq(_) => yaml!({ ["equals"]: self.elem.compile_value(ctx)? }),
+            UnaryOp::Neg(_) => yaml!({ ["equals"]: self.neg(ctx)? }),
+            UnaryOp::Not(_) => yaml!({ ["not"]: self.elem.compile_assertion(ctx, field)? }),
             _ => {
                 let op = match self.op {
                     UnaryOp::Ge(_) => "gte",
@@ -237,7 +258,7 @@ impl Compilable for ExprUnary {
                     UnaryOp::Lt(_) => "lt",
                     _ => unreachable!(),
                 };
-                yaml!({["range"]: {[field]: {[op]: self.elem.compile_value(ctx)?}}})
+                yaml!({ ["range"]: {[field]: {[op]: self.elem.compile_value(ctx)?}} })
             }
         })
     }
@@ -294,4 +315,24 @@ impl Compilable for ExprParen {
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         self.elem.compile_assertion(ctx, field)
     }
+}
+
+fn compile_fields_in<'a>(
+    fields: impl 'a + IntoIterator<Item = &'a Field>,
+    ctx: &Context,
+    root: Option<&str>,
+) -> Result<Mapping> {
+    let assertions = fields
+        .into_iter()
+        .map(|f| {
+            let key = f.path.to_field();
+            let key = if let Some(root) = root {
+                format!("{root}.{key}")
+            } else {
+                key
+            };
+            f.value.compile_assertion(ctx, &key).map(Yaml::from)
+        })
+        .collect::<Result<Sequence>>()?;
+    Ok(yaml!({ ["and"]: assertions }))
 }

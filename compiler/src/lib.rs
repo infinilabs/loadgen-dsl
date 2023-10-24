@@ -8,9 +8,9 @@ pub mod ast;
 pub mod error;
 
 use error::Result;
-use serde_yaml::{Sequence, Value as Yaml};
+use serde_yaml::{Mapping, Sequence, Value as Yaml};
 
-pub fn compile(s: &str) -> Result<Yaml> {
+pub fn compile(s: &str) -> Result<Mapping> {
     let ast = parser::Parser::new(s).parse::<ast::Dsl>()?;
     compiler::Compiler::new().compile(&ast)
 }
@@ -26,22 +26,21 @@ pub fn compile_requests(s: &str) -> Result<Yaml> {
 fn _compile_requests(s: &str) -> Result<Yaml> {
     let mut reqs = Sequence::new();
     let mut parser = lexer::ReqParser::new(s);
-    while let Some(req) = parser.parse()? {
-        let assertion = match compile(&req.assertion) {
+    while let Some(dsl) = parser.parse()? {
+        let mut req = match compile(&dsl.assertion) {
             Ok(t) => t,
-            Err(e) => return Err(e.with_source(req.assertion)),
+            Err(e) => return Err(e.with_source(dsl.assertion)),
         };
-        reqs.push(
+        req.insert(
+            Yaml::from("request"),
             yaml!({
-                ["request"]: {
-                    ["method"]: req.method,
-                    ["url"]: req.url,
-                    ["body"]: req.body,
-                },
-                ["assert"]: assertion,
+                ["method"]: dsl.method,
+                ["url"]: dsl.url,
+                ["body"]: dsl.body,
             })
             .into(),
         );
+        reqs.push(req.into());
     }
 
     Ok(Yaml::from(reqs))
