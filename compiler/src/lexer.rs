@@ -1,4 +1,4 @@
-use crate::error::{Error, ErrorMsg};
+use crate::error::{Error, ErrorMsg, Result};
 use std::{borrow::Cow, fmt};
 
 const EOF: char = '\0';
@@ -218,10 +218,7 @@ define_pattern!(match ch {
 });
 
 pub(crate) struct Lexer<'a> {
-    cur: std::str::Chars<'a>,
-    source: &'a str,
-    /// Start position of the current token.
-    start: usize,
+    cur: Cursor<'a>,
     /// Cached string.
     buf: String,
     errors: Vec<ErrorMsg>,
@@ -229,43 +226,22 @@ pub(crate) struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        if source.len() > (u32::MAX as usize) {
-            panic!("input source is too large");
-        }
         Self {
-            cur: source.chars(),
-            source,
-            start: 0,
+            cur: Cursor::new(source),
             buf: String::new(),
             errors: Vec::new(),
         }
     }
 
     pub fn is_eof(&self) -> bool {
-        self.cur.as_str().is_empty()
-    }
-
-    fn pos(&self) -> usize {
-        self.source.len() - self.cur.as_str().len()
-    }
-
-    fn peek_ch(&self) -> char {
-        self.cur.clone().next().unwrap_or(EOF)
-    }
-
-    fn peek_ch2(&self) -> char {
-        self.cur.clone().nth(1).unwrap_or(EOF)
-    }
-
-    fn advance(&mut self) -> char {
-        self.cur.next().unwrap_or(EOF)
+        self.cur.is_eof()
     }
 
     /// Get the source of the current token, strings and regular expressions are
     /// escaped.
     pub fn source(&self) -> &str {
         if self.buf.is_empty() {
-            self.raw_source()
+            self.cur.source()
         } else {
             &self.buf
         }
@@ -274,14 +250,10 @@ impl<'a> Lexer<'a> {
     /// Returns a copy of the current source.
     pub fn copy_source(&self) -> Cow<'a, str> {
         if self.buf.is_empty() {
-            Cow::Borrowed(self.raw_source())
+            Cow::Borrowed(self.cur.source())
         } else {
             Cow::Owned(self.buf.clone())
         }
-    }
-
-    fn raw_source(&self) -> &'a str {
-        &self.source[self.start..self.pos()]
     }
 
     /// Parses the next token, ingores whitespace and comments.
@@ -298,14 +270,12 @@ impl<'a> Lexer<'a> {
     pub fn parse(&mut self) -> LexResult {
         let token = LexToken {
             kind: self.next_kind(),
-            span: self.span_from(self.start),
+            span: self.cur.span(),
         };
         let err = if self.errors.is_empty() {
             None
         } else {
-            Some(Error {
-                msgs: std::mem::take(&mut self.errors),
-            })
+            Some(Error::from_vec(std::mem::take(&mut self.errors)))
         };
         (token, err)
     }
@@ -313,19 +283,19 @@ impl<'a> Lexer<'a> {
     fn next_kind(&mut self) -> LexKind {
         // Reset previous state.
         self.buf.clear();
-        self.start = self.pos();
-        let ch = self.advance();
+        self.cur.begin();
+        let ch = self.cur.advance();
         match ch {
             whitespace!() => {
-                self.skip_while(whitespace);
+                self.cur.skip_while(whitespace);
                 LexKind::Whitespace
             }
-            '/' if self.skip_ch('/') => {
-                self.skip_line();
+            '/' if self.cur.skip_ch('/') => {
+                self.cur.skip_line();
                 LexKind::Comment
             }
             ident_head!() => {
-                self.skip_while(ident_body);
+                self.cur.skip_while(ident_body);
                 LexKind::Ident
             }
             '\'' | '"' => self.next_string(ch),
@@ -336,17 +306,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn span_from(&self, start: usize) -> Span {
-        Span::new(start as u32, self.pos() as u32)
-    }
-
     fn error(&mut self, kind: &'static str) {
-        self.error_from(self.start, kind);
+        self.error_from(self.cur.start, kind);
     }
 
     fn error_from(&mut self, start: usize, kind: &'static str) {
         self.errors.push(ErrorMsg {
-            span: self.span_from(start),
+            span: self.cur.span_from(start),
             desc: kind.into(),
         })
     }
@@ -356,8 +322,8 @@ impl<'a> Lexer<'a> {
     fn init_buf(&mut self, ch: char) {
         if self.buf.is_empty() {
             // Ignore the backslash
-            let end = self.pos() - 2;
-            self.buf.push_str(&self.source[self.start..end]);
+            let end = self.cur.pos() - 2;
+            self.buf.push_str(&self.cur.fetch(self.cur.start..end));
         }
         self.buf_push(ch);
     }
@@ -374,52 +340,12 @@ impl<'a> Lexer<'a> {
             .push(char::from_u32(ch as u32).expect("invalid character"));
     }
 
-    fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> bool {
-        if f(self.peek_ch()) {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn skip_ch(&mut self, expected: char) -> bool {
-        self.skip_if(|ch| ch == expected)
-    }
-
-    fn skip_matches(&mut self, patterns: &[char]) -> bool {
-        self.skip_if(|ch| patterns.contains(&ch))
-    }
-
-    fn skip_while(&mut self, mut f: impl FnMut(char) -> bool) -> bool {
-        if self.skip_if(&mut f) {
-            while self.skip_if(&mut f) {}
-            true
-        } else {
-            false
-        }
-    }
-
-    fn skip_line(&mut self) {
-        loop {
-            match self.advance() {
-                '\n' => break,
-                EOF if self.is_eof() => break,
-                _ => {}
-            }
-        }
-    }
-
-    fn skip_digits(&mut self) -> bool {
-        self.skip_while(digit)
-    }
-
     fn next_string(&mut self, quote: char) -> LexKind {
         debug_assert_matches!(quote, '\'' | '"');
         loop {
-            match self.advance() {
+            match self.cur.advance() {
                 '\\' => {
-                    let ch = self.advance();
+                    let ch = self.cur.advance();
                     let escaped = match ch {
                         'b' => '\x08',
                         'f' => '\x0c',
@@ -430,13 +356,13 @@ impl<'a> Lexer<'a> {
                         ch => {
                             self.feed_buf('\\');
                             self.feed_buf(ch);
-                            self.error_from(self.pos() - 2, INVALID_ESCAPE);
+                            self.error_from(self.cur.pos() - 2, INVALID_ESCAPE);
                             continue;
                         }
                     };
                     self.init_buf(escaped);
                 }
-                EOF if self.is_eof() => {
+                EOF if self.cur.is_eof() => {
                     self.error(UNTERMINATED_STRING);
                     break;
                 }
@@ -454,9 +380,9 @@ impl<'a> Lexer<'a> {
     fn next_regexp(&mut self, quote: char) -> LexKind {
         debug_assert_eq!(quote, '/');
         loop {
-            match self.advance() {
-                '\\' if self.skip_ch('/') => self.init_buf('/'),
-                EOF if self.is_eof() => {
+            match self.cur.advance() {
+                '\\' if self.cur.skip_ch('/') => self.init_buf('/'),
+                EOF if self.cur.is_eof() => {
                     self.error(UNTERMINATED_REGEXP);
                     break;
                 }
@@ -473,12 +399,11 @@ impl<'a> Lexer<'a> {
 
     fn next_number(&mut self, first: char) -> LexKind {
         debug_assert_matches!(first, digit!());
-        self.skip_digits();
-        let kind = if self.peek_ch() == '.' {
-            if digit(self.peek_ch2()) {
-                self.advance();
-                self.advance();
-                self.skip_digits();
+        self.cur.skip_digits();
+        let kind = if self.cur.peek_ch() == '.' {
+            if digit(self.cur.peek_ch2()) {
+                self.cur.advance();
+                self.cur.skip_digits();
                 LexKind::Float
             } else {
                 return LexKind::Integer;
@@ -486,15 +411,195 @@ impl<'a> Lexer<'a> {
         } else {
             LexKind::Integer
         };
-        if self.skip_matches(&['e', 'E']) {
-            self.skip_matches(&['+', '-']);
-            if !self.skip_digits() {
+        if self.cur.skip_matches(&['e', 'E']) {
+            self.cur.skip_matches(&['+', '-']);
+            if !self.cur.skip_digits() {
                 self.error(MISSING_EXPONENT);
             }
             LexKind::Float
         } else {
             kind
         }
+    }
+}
+
+pub(crate) struct Req<'a> {
+    pub method: &'a str,
+    pub url: &'a str,
+    pub body: &'a str,
+    pub assertion: String,
+}
+
+pub(crate) struct ReqParser<'a> {
+    cur: Cursor<'a>,
+}
+
+impl<'a> ReqParser<'a> {
+    pub fn new(source: &'a str) -> Self {
+        Self {
+            cur: Cursor::new(source),
+        }
+    }
+
+    pub fn parse(&mut self) -> Result<Option<Req<'a>>> {
+        // Parse method.
+        loop {
+            self.cur.begin();
+            match self.cur.advance() {
+                // Skip empty lines
+                '\n' => {}
+                EOF if self.cur.is_eof() => return Ok(None),
+                _ => break,
+            }
+        }
+        self.cur.skip_while(|ch| !matches!(ch, ' ' | '\t' | '\n'));
+        let method = self.cur.source();
+        // Skip middle whitespace
+        self.cur.skip_while(|ch| matches!(ch, ' ' | '\t'));
+        // Parse URL
+        self.cur.begin();
+        self.cur.skip_line();
+        let url = self.cur.source();
+        // Remove trailing newline.
+        let url = &url[..url.len() - 1];
+        if url.is_empty() {
+            return Err(Error::new(self.cur.span(), "missing URL"));
+        }
+        // Parse body.
+        self.cur.begin();
+        loop {
+            match self.cur.peek_ch() {
+                '\n' | '#' => break,
+                _ => self.cur.skip_line(),
+            }
+        }
+        let body = self.cur.source();
+        // Parser assertion.
+        let mut assertion = String::new();
+        loop {
+            match self.cur.peek_ch() {
+                '#' => {
+                    self.cur.advance();
+                    self.cur.begin();
+                    self.cur.skip_line();
+                    assertion.push_str(self.cur.source());
+                }
+                _ => break,
+            }
+        }
+        Ok(Some(Req {
+            method,
+            url,
+            body,
+            assertion,
+        }))
+    }
+}
+
+pub(crate) struct Cursor<'a> {
+    source: &'a str,
+    iter: std::str::Chars<'a>,
+    /// Start position of the current token.
+    start: usize,
+}
+
+impl<'a> Cursor<'a> {
+    pub fn new(source: &'a str) -> Self {
+        if source.len() > (u32::MAX as usize) {
+            panic!("input source is too large");
+        }
+        Self {
+            source,
+            iter: source.chars(),
+            start: 0,
+        }
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.iter.as_str().is_empty()
+    }
+
+    pub fn pos(&self) -> usize {
+        self.source.len() - self.iter.as_str().len()
+    }
+
+    pub fn source(&self) -> &'a str {
+        self.fetch(self.start..self.pos())
+    }
+
+    pub fn fetch<I>(&self, i: I) -> &'a I::Output
+    where
+        I: std::slice::SliceIndex<str>,
+    {
+        self.source.get(i).unwrap()
+    }
+
+    pub fn span(&self) -> Span {
+        self.span_from(self.start)
+    }
+
+    pub fn span_from(&self, start: usize) -> Span {
+        Span::new(start as u32, self.pos() as u32)
+    }
+
+    pub fn peek_ch(&self) -> char {
+        self.iter.clone().next().unwrap_or(EOF)
+    }
+
+    pub fn peek_ch2(&self) -> char {
+        self.iter.clone().nth(1).unwrap_or(EOF)
+    }
+
+    pub fn begin(&mut self) {
+        self.start = self.pos();
+    }
+
+    pub fn advance(&mut self) -> char {
+        self.iter.next().unwrap_or(EOF)
+    }
+
+    pub fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> bool {
+        if f(self.peek_ch()) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn skip_ch(&mut self, expected: char) -> bool {
+        self.skip_if(|ch| ch == expected)
+    }
+
+    pub fn skip_matches(&mut self, patterns: &[char]) -> bool {
+        self.skip_if(|ch| patterns.contains(&ch))
+    }
+
+    pub fn skip_while(&mut self, mut f: impl FnMut(char) -> bool) -> bool {
+        if self.skip_if(&mut f) {
+            while !self.is_eof() && self.skip_if(&mut f) {}
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn skip_until(&mut self, mut f: impl FnMut(char) -> bool) {
+        loop {
+            match self.advance() {
+                ch if f(ch) => break,
+                EOF if self.is_eof() => break,
+                _ => {}
+            }
+        }
+    }
+
+    pub fn skip_line(&mut self) {
+        self.skip_until(|ch| ch == '\n')
+    }
+
+    pub fn skip_digits(&mut self) -> bool {
+        self.skip_while(digit)
     }
 }
 
@@ -536,17 +641,17 @@ mod tests {
 
     #[test]
     fn cursor() {
-        let mut lexer = Lexer::new("xy");
-        assert_eq!(lexer.pos(), 0);
-        assert_eq!(lexer.advance(), 'x');
-        assert_eq!(lexer.pos(), 1);
-        assert_eq!(lexer.peek_ch(), 'y');
-        assert_eq!(lexer.pos(), 1);
-        assert_eq!(lexer.advance(), 'y');
-        assert_eq!(lexer.advance(), EOF);
-        assert_eq!(lexer.advance(), EOF);
-        assert_eq!(lexer.pos(), 2);
-        assert!(lexer.is_eof());
+        let mut cur = Cursor::new("xy");
+        assert_eq!(cur.pos(), 0);
+        assert_eq!(cur.advance(), 'x');
+        assert_eq!(cur.pos(), 1);
+        assert_eq!(cur.peek_ch(), 'y');
+        assert_eq!(cur.pos(), 1);
+        assert_eq!(cur.advance(), 'y');
+        assert_eq!(cur.advance(), EOF);
+        assert_eq!(cur.advance(), EOF);
+        assert_eq!(cur.pos(), 2);
+        assert!(cur.is_eof());
     }
 
     #[test]

@@ -10,9 +10,17 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[error("compile errors")]
 pub struct Error {
     pub(crate) msgs: Vec<ErrorMsg>,
+    pub(crate) source_code: Option<String>,
 }
 
 impl Error {
+    pub(crate) fn from_vec(msgs: Vec<ErrorMsg>) -> Self {
+        Self {
+            msgs,
+            source_code: None,
+        }
+    }
+
     pub(crate) fn new<S>(span: Span, desc: S) -> Self
     where
         S: Into<String>,
@@ -22,6 +30,14 @@ impl Error {
                 span,
                 desc: Box::from(desc.into()),
             }],
+            source_code: None,
+        }
+    }
+
+    pub(crate) fn with_source(self, source: String) -> Self {
+        Self {
+            source_code: Some(source),
+            ..self
         }
     }
 
@@ -38,6 +54,10 @@ impl Error {
 }
 
 impl Diagnostic for Error {
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.source_code.as_ref().map(|s| s as _)
+    }
+
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         Some(Box::new(self.msgs.iter().map(|msg| {
             LabeledSpan::new_with_span(Some(msg.desc.clone().into()), msg.span)

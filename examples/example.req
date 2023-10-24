@@ -1,0 +1,13 @@
+POST $[[PIZZA_SERVER]]/collection1/_doc
+{"hello": "world"}
+# 200
+# {
+#   result: "created"
+# }
+
+POST $[[PIZZA_SERVER]]/collection1/_doc
+{"hello": "loadgen"}
+# 200
+# {
+#   result: "created"
+# }
