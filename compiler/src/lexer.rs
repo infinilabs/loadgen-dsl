@@ -423,11 +423,16 @@ impl<'a> Lexer<'a> {
     }
 }
 
+pub(crate) enum ReqKind<'a> {
+    Req(Req<'a>),
+    Comment(&'a str),
+    Eof,
+}
+
 pub(crate) struct Req<'a> {
     pub method: &'a str,
     pub url: &'a str,
     pub body: &'a str,
-    pub assertion: String,
 }
 
 pub(crate) struct ReqParser<'a> {
@@ -441,58 +446,49 @@ impl<'a> ReqParser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Option<Req<'a>>> {
-        // Parse method.
-        loop {
+    pub fn parse(&mut self) -> Result<ReqKind<'a>> {
+        Ok(loop {
+            if self.cur.is_eof() {
+                break ReqKind::Eof;
+            }
             self.cur.begin();
-            match self.cur.advance() {
+            let kind = match self.cur.advance() {
                 // Skip empty lines
-                '\n' => {}
-                EOF if self.cur.is_eof() => return Ok(None),
-                _ => break,
-            }
-        }
-        self.cur.skip_while(|ch| !matches!(ch, ' ' | '\t' | '\n'));
-        let method = self.cur.source();
-        // Skip middle whitespace
-        self.cur.skip_while(|ch| matches!(ch, ' ' | '\t'));
-        // Parse URL
-        self.cur.begin();
-        self.cur.skip_line();
-        let url = self.cur.source();
-        // Remove trailing newline.
-        let url = &url[..url.len() - 1];
-        if url.is_empty() {
-            return Err(Error::new(self.cur.span(), "missing URL"));
-        }
-        // Parse body.
-        self.cur.begin();
-        loop {
-            match self.cur.peek_ch() {
-                '\n' | '#' => break,
-                _ => self.cur.skip_line(),
-            }
-        }
-        let body = self.cur.source();
-        // Parser assertion.
-        let mut assertion = String::new();
-        loop {
-            match self.cur.peek_ch() {
+                '\n' => continue,
                 '#' => {
-                    self.cur.advance();
                     self.cur.begin();
                     self.cur.skip_line();
-                    assertion.push_str(self.cur.source());
+                    ReqKind::Comment(self.cur.source())
                 }
-                _ => break,
-            }
-        }
-        Ok(Some(Req {
-            method,
-            url,
-            body,
-            assertion,
-        }))
+                _ => {
+                    self.cur.skip_while(|ch| !matches!(ch, ' ' | '\t' | '\n'));
+                    let method = self.cur.source();
+                    // Skip middle whitespace
+                    self.cur.skip_while(|ch| matches!(ch, ' ' | '\t'));
+                    // Parse URL
+                    self.cur.begin();
+                    self.cur.skip_line();
+                    let url = self.cur.source();
+                    // Remove trailing newline.
+                    let url = &url[..url.len() - 1];
+                    if url.is_empty() {
+                        return Err(Error::new(self.cur.span(), "missing URL"));
+                    }
+                    // Parse body.
+                    self.cur.begin();
+                    loop {
+                        match self.cur.peek_ch() {
+                            '\n' | '#' => break,
+                            EOF if self.cur.is_eof() => break,
+                            _ => self.cur.skip_line(),
+                        }
+                    }
+                    let body = self.cur.source();
+                    ReqKind::Req(Req { method, url, body })
+                }
+            };
+            break kind;
+        })
     }
 }
 

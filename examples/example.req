@@ -1,3 +1,11 @@
+# variables: [
+#   {name: "id", type: "sequence"},
+# ]
+# runner: {
+#   assert_error: true,
+#   assert_invalid: true,
+# }
+
 PUT $[[env.PIZZA_SERVER]]/test_create_document_$[[id]]
 # register: [{
 #   collection: "_ctx.response.body_json.collection",

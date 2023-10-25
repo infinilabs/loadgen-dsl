@@ -8,6 +8,7 @@ pub mod ast;
 pub mod error;
 
 use error::Result;
+use lexer::{Req, ReqKind};
 use serde_yaml::{Mapping, Sequence, Value as Yaml};
 
 pub fn compile(s: &str) -> Result<Mapping> {
@@ -24,24 +25,54 @@ pub fn compile_requests(s: &str) -> Result<Yaml> {
 }
 
 fn _compile_requests(s: &str) -> Result<Yaml> {
+    let mut opts = Mapping::new();
     let mut reqs = Sequence::new();
     let mut parser = lexer::ReqParser::new(s);
-    while let Some(dsl) = parser.parse()? {
-        let mut req = match compile(&dsl.assertion) {
-            Ok(t) => t,
-            Err(e) => return Err(e.with_source(dsl.assertion)),
-        };
-        req.insert(
-            Yaml::from("request"),
-            yaml!({
-                ["method"]: dsl.method,
-                ["url"]: dsl.url,
-                ["body"]: dsl.body,
-            })
-            .into(),
-        );
-        reqs.push(req.into());
+
+    let mut assertion = String::new();
+    let mut curr_req = None::<Req>;
+    loop {
+        let kind = parser.parse()?;
+        if matches!(kind, ReqKind::Req(_) | ReqKind::Eof) {
+            if let Some(req) = curr_req.take() {
+                // A new request
+                let mut req = yaml!({
+                    ["request"]: {
+                        ["method"]: req.method,
+                        ["url"]: req.url,
+                        ["body"]: req.body,
+                    },
+                });
+                if !assertion.is_empty() {
+                    match compile(&assertion) {
+                        Ok(t) => req.extend(t),
+                        Err(e) => return Err(e.with_source(assertion)),
+                    }
+                    assertion.clear();
+                }
+                reqs.push(req.into());
+            } else {
+                // Global options
+                if !assertion.is_empty() {
+                    let ast = parser::Parser::new(&assertion).parse::<ast::DslFull>()?;
+                    match compiler::Compiler::new().compile(&ast::Dsl::Full(ast)) {
+                        Ok(t) => {
+                            debug_assert!(opts.is_empty());
+                            opts.extend(t);
+                        }
+                        Err(e) => return Err(e.with_source(assertion)),
+                    }
+                    assertion.clear();
+                }
+            }
+        }
+        match kind {
+            ReqKind::Req(req) => curr_req = Some(req),
+            ReqKind::Comment(t) => assertion.push_str(t),
+            ReqKind::Eof => break,
+        }
     }
 
-    Ok(Yaml::from(reqs))
+    opts.insert(yaml!("requests"), reqs.into());
+    Ok(opts.into())
 }
