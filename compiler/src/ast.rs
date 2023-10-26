@@ -278,11 +278,9 @@ impl Expr {
         }
         ExprDisplay
     }
-}
 
-impl Parse for Expr {
-    fn parse(parser: &mut Parser) -> Result<Self> {
-        let left = if parser.peek(ExprLit::peek()) {
+    fn parse_lhs(parser: &mut Parser) -> Result<Self> {
+        if parser.peek(ExprLit::peek()) {
             parser.parse().map(Self::Lit)
         } else if parser.peek(Bracket) {
             parser.parse().map(Self::Array)
@@ -296,10 +294,16 @@ impl Parse for Expr {
             parser.parse().map(Self::Paren)
         } else {
             return parser.unexpected_token(Self::peek());
-        }?;
+        }
+    }
+}
+
+impl Parse for Expr {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let left = Self::parse_lhs(parser)?;
         if parser.peek(BinaryOp::peek()) {
             Ok(Expr::Binary(ExprBinary {
-                left: Box::new(left),
+                left: left.into(),
                 op: parser.parse()?,
                 right: parser.parse()?,
             }))
@@ -463,7 +467,7 @@ define_ast_struct!(
 impl Parse for ExprUnary {
     fn parse(parser: &mut Parser) -> Result<Self> {
         let op = parser.parse()?;
-        let elem = parser.parse()?;
+        let elem = Expr::parse_lhs(parser)?.into();
         Ok(Self { op, elem })
     }
 }
@@ -519,7 +523,7 @@ define_ast_struct!(
 
 impl Parse for ExprBinary {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        let left = parser.parse()?;
+        let left = Expr::parse_lhs(parser)?.into();
         let op = parser.parse()?;
         let right = parser.parse()?;
         Ok(Self { left, op, right })

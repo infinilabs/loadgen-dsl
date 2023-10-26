@@ -19,7 +19,7 @@ POST $[[env.PIZZA_SERVER]]/$[[collection]]/_doc
 {"hello": "world"}
 # 200
 # {
-#   took: <50,
+#   took: <50 and >0,
 #   time_out: false,
 #   hits: {
 #     total: {
