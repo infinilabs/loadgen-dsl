@@ -295,11 +295,20 @@ impl Compilable for ExprFuncall {
         ))
     }
 
-    fn compile_assertion(&self, _ctx: &Context, _field: &str) -> Result<Mapping> {
-        Err(Error::new(
-            self.span(),
-            format!("{} is not yet supported as assertion", Self::display()),
-        ))
+    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+        let mut args = self.params.items();
+        let Some(arg) = args.next() else {
+            return Err(Error::new(self.span(), "too few arguments"));
+        };
+        if args.next().is_some() {
+            return Err(Error::new(self.span(), "too many arguments"));
+        }
+        let f = self.ident.value();
+        Ok(yaml!({
+            [f]: {
+                [field]: arg.compile_value(ctx)?,
+            },
+        }))
     }
 }
 

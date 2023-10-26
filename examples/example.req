@@ -24,7 +24,7 @@ POST $[[env.PIZZA_SERVER]]/$[[collection]]/_doc
 #   hits: {
 #     total: {
 #       value: 100,
-#       relation: /eq|gt|ge/,
+#       relation: in(["params"]),
 #     },
 #   },
 #   max_score: 1.0,

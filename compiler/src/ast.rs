@@ -552,7 +552,7 @@ impl Parse for BinaryOp {
 }
 
 define_ast_struct!(
-    #[span = (ident, params)]
+    #[span = (ident, paren_token)]
     pub struct ExprFuncall {
         ident: Ident,
         paren_token: Paren,
