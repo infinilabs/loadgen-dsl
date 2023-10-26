@@ -1,21 +1,48 @@
 # variables: [
 #   {name: "id", type: "sequence"},
-# ]
+# ],
 # runner: {
 #   assert_error: true,
 #   assert_invalid: true,
-# }
+# },
 
 PUT $[[env.PIZZA_SERVER]]/test_create_document_$[[id]]
 # register: [{
 #   collection: "_ctx.response.body_json.collection",
-# }]
+# }],
 # assert: {
 #   _ctx.response.status: 200,
 #   _ctx.response.body_json: {success: true},
-# }
+# },
 
 POST $[[env.PIZZA_SERVER]]/$[[collection]]/_doc
 {"hello": "world"}
 # 200
-# {result: "created"}
+# {
+#   took: <50,
+#   time_out: false,
+#   hits: {
+#     total: {
+#       value: 100,
+#       relation: /eq|gt|ge/,
+#     },
+#   },
+#   max_score: 1.0,
+#   aggregations: {
+#     vavg: {
+#       value: 51,
+#     },
+#     vcount: {
+#       value: 50,
+#     },
+#     vmax: {
+#       value: 100,
+#     },
+#     vmin: {
+#       value: 2,
+#     },
+#     vsum: {
+#       value: 2550,
+#     },
+#   },
+# }

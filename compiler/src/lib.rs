@@ -16,6 +16,11 @@ pub fn compile(s: &str) -> Result<Mapping> {
     compiler::Compiler::new().compile(&ast)
 }
 
+fn compile_full(s: &str) -> Result<Mapping> {
+    let ast = parser::Parser::new(s).parse::<ast::DslFull>()?;
+    compiler::Compiler::new().compile(&ast::Dsl::Full(ast))
+}
+
 pub fn compile_requests(s: &str) -> Result<Yaml> {
     match _compile_requests(s) {
         Ok(t) => Ok(t),
@@ -54,8 +59,7 @@ fn _compile_requests(s: &str) -> Result<Yaml> {
             } else {
                 // Global options
                 if !assertion.is_empty() {
-                    let ast = parser::Parser::new(&assertion).parse::<ast::DslFull>()?;
-                    match compiler::Compiler::new().compile(&ast::Dsl::Full(ast)) {
+                    match compile_full(&assertion) {
                         Ok(t) => {
                             debug_assert!(opts.is_empty());
                             opts.extend(t);

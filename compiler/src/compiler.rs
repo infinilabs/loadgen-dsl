@@ -59,7 +59,7 @@ impl Compiler {
             }
             Dsl::Full(ast) => ast
                 .fields
-                .iter()
+                .items()
                 .map(|f| {
                     let key = f.path.to_field();
                     let value = if key == "assert" {

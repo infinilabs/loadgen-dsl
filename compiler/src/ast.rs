@@ -240,7 +240,7 @@ impl Parse for DslBrief {
 define_ast_struct!(
     #[span = fields]
     pub struct DslFull {
-        fields: Vec<Field>,
+        fields: Terminated<Field, Comma>,
     }
 );
 

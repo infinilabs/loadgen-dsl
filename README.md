@@ -41,10 +41,10 @@ and:
 
 ## 🌲 Grammer
 
-```ebnf
+```bnf
 grammer    ::= brief | full
 brief      ::= status? object EOF
-full       ::= pair+ EOF
+full       ::= fields EOF
 status     ::= integer
 expr       ::= expr1 (infixop expr1)*
 expr1      ::= literal
