@@ -149,6 +149,12 @@ macro_rules! define_ast_enum {
                 }
             }
         }
+
+        $(impl From<$ty> for $name {
+            fn from(val: $ty) -> Self {
+                $name::$var(val)
+            }
+        })*
     };
 }
 
@@ -279,7 +285,7 @@ impl Expr {
         ExprDisplay
     }
 
-    fn parse_lhs(parser: &mut Parser) -> Result<Self> {
+    fn parse_one(parser: &mut Parser) -> Result<Self> {
         if parser.peek(ExprLit::peek()) {
             parser.parse().map(Self::Lit)
         } else if parser.peek(Bracket) {
@@ -300,13 +306,16 @@ impl Expr {
 
 impl Parse for Expr {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        let left = Self::parse_lhs(parser)?;
+        let left = Self::parse_one(parser)?;
         if parser.peek(BinaryOp::peek()) {
-            Ok(Expr::Binary(ExprBinary {
+            let (op, right) = ExprBinary::parse_next(parser)?;
+            ExprBinary {
                 left: left.into(),
-                op: parser.parse()?,
-                right: parser.parse()?,
-            }))
+                op,
+                right: right.into(),
+            }
+            .parse_rest(parser)
+            .map(Self::Binary)
         } else {
             Ok(left)
         }
@@ -467,7 +476,7 @@ define_ast_struct!(
 impl Parse for ExprUnary {
     fn parse(parser: &mut Parser) -> Result<Self> {
         let op = parser.parse()?;
-        let elem = Expr::parse_lhs(parser)?.into();
+        let elem = Expr::parse_one(parser)?.into();
         Ok(Self { op, elem })
     }
 }
@@ -521,12 +530,55 @@ define_ast_struct!(
     }
 );
 
+impl ExprBinary {
+    fn parse_next(parser: &mut Parser) -> Result<(BinaryOp, Expr)> {
+        Ok((parser.parse::<BinaryOp>()?, Expr::parse_one(parser)?))
+    }
+
+    fn parse_rest(self, parser: &mut Parser) -> Result<Self> {
+        let mut left = self.left;
+        let mut op = self.op;
+        let mut right = self.right;
+
+        loop {
+            if !parser.peek(BinaryOp::peek()) {
+                break;
+            }
+            let (next_op, next_right) = Self::parse_next(parser)?;
+            let next_right = Box::new(next_right);
+
+            if op.precedence() >= next_op.precedence() {
+                left = Box::new(Self { left, op, right }.into());
+                op = next_op;
+                right = next_right;
+            } else {
+                right = Box::new(
+                    Self {
+                        left: right,
+                        op: next_op,
+                        right: next_right,
+                    }
+                    .parse_rest(parser)?
+                    .into(),
+                );
+                break;
+            }
+        }
+
+        Ok(Self { left, op, right })
+    }
+}
+
 impl Parse for ExprBinary {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        let left = Expr::parse_lhs(parser)?.into();
-        let op = parser.parse()?;
-        let right = parser.parse()?;
-        Ok(Self { left, op, right })
+        let left = Expr::parse_one(parser)?;
+        let (op, right) = Self::parse_next(parser)?;
+        Self {
+            left: left.into(),
+            op,
+            right: right.into(),
+        }
+        .parse_rest(parser)
     }
 }
 
@@ -540,6 +592,13 @@ define_ast_enum!(
 impl BinaryOp {
     fn peek() -> impl Peek {
         And.or(Or)
+    }
+
+    fn precedence(&self) -> usize {
+        match self {
+            Self::And(_) => 1,
+            Self::Or(_) => 0,
+        }
     }
 }
 
