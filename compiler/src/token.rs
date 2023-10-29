@@ -239,6 +239,15 @@ impl Ident {
     }
 }
 
+impl<T> PartialEq<T> for Ident
+where
+    T: AsRef<str>,
+{
+    fn eq(&self, other: &T) -> bool {
+        self.value() == other.as_ref()
+    }
+}
+
 fn source_to_string(s: &str) -> Box<str> {
     debug_assert_matches!(s.as_bytes()[0], b'\'' | b'"' | b'/');
     debug_assert_matches!(s.as_bytes()[s.len() - 1], b'\'' | b'"' | b'/');

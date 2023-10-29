@@ -1,3 +1,9 @@
+use crate::{
+    ast::Expr,
+    error::{Error, Result},
+    lexer::Span,
+};
+
 macro_rules! assert_matches {
     ($left:expr, $(|)? $( $pattern:pat_param )|+ $( if $guard: expr )? $(,)?) => {
         match $left {
@@ -90,3 +96,67 @@ macro_rules! yaml {
         yaml!(@array [$($out)* $val,])
     };
 }
+
+pub(crate) trait UnpackFrom<'a>: Sized {
+    fn unpack_next<I>(iter: &mut I) -> Option<Self>
+    where
+        I: 'a + Iterator<Item = &'a Expr>;
+
+    fn unpack<I>(span: Span, args: I) -> Result<Self>
+    where
+        I: 'a + IntoIterator<Item = &'a Expr>,
+    {
+        let mut args = args.into_iter();
+        let t =
+            Self::unpack_next(&mut args).ok_or_else(|| Error::new(span, "too few arguments"))?;
+        if args.next().is_some() {
+            Err(Error::new(span, "too many arguments"))
+        } else {
+            Ok(t)
+        }
+    }
+}
+
+impl<'a> UnpackFrom<'a> for &'a Expr {
+    fn unpack_next<I>(iter: &mut I) -> Option<Self>
+    where
+        I: 'a + Iterator<Item = &'a Expr>,
+    {
+        iter.next()
+    }
+}
+
+impl<'a> UnpackFrom<'a> for Option<&'a Expr> {
+    fn unpack_next<I>(iter: &mut I) -> Option<Self>
+    where
+        I: 'a + Iterator<Item = &'a Expr>,
+    {
+        Some(iter.next())
+    }
+}
+
+macro_rules! impl_unpack_from_for_tuples {
+    ($($T:ident)*) => {
+        impl_unpack_from_for_tuples!(@impl [] $($T)*);
+    };
+    (@impl [$($T:ident)*]) => {};
+    (@impl [$($head:tt)*] $T:ident $($rest:tt)*) => {
+        impl_unpack_from_for_tuples!(@impl_for $($head)* $T);
+        impl_unpack_from_for_tuples!(@impl [$($head)* $T] $($rest)*);
+    };
+    (@impl_for $($T:ident)*) => {
+        impl<'a, $($T,)*> UnpackFrom<'a> for ($($T,)*)
+        where
+            $($T: UnpackFrom<'a>,)*
+        {
+            fn unpack_next<I>(args: &mut I) -> Option<Self>
+            where
+                I: 'a + Iterator<Item = &'a Expr>,
+            {
+                Some(($($T::unpack_next(args)?,)*))
+            }
+        }
+    };
+}
+
+impl_unpack_from_for_tuples!(T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);

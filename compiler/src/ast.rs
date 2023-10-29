@@ -154,6 +154,16 @@ macro_rules! define_ast_enum {
             fn from(val: $ty) -> Self {
                 $name::$var(val)
             }
+        }
+        impl TryFrom<$name> for $ty {
+            type Error = $name;
+
+            fn try_from(val: $name) -> Result<Self, $name> {
+                match val {
+                    $name::$var(val) => Ok(val),
+                    _ => Err(val),
+                }
+            }
         })*
     };
 }
