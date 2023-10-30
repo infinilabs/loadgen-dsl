@@ -54,15 +54,28 @@ impl Context {
             .map(|f| {
                 let key = f.path.to_field();
                 let value = if key == "assert" {
-                    match &*f.value {
-                        Expr::Object(expr) => self.compile_fields_in(expr.fields.items(), None)?,
-                        Expr::Funcall(expr) if expr.ident == "assert" => expr.call_assert(self)?,
-                        _ => {
-                            return Err(Error::new(
-                                f.value.span(),
-                                "only object and `assert()` is supported as assertion",
-                            ));
-                        }
+                    let mut expr = &*f.value;
+                    loop {
+                        break match expr {
+                            Expr::Object(expr) => {
+                                self.compile_fields_in(expr.fields.items(), None)?
+                            }
+                            Expr::Tuple(expr) => expr.compile_as_brief_dsl(self)?,
+                            Expr::Paren(e) => {
+                                expr = &*e.elem;
+                                continue;
+                            }
+                            _ => {
+                                return Err(Error::new(
+                                    f.value.span(),
+                                    format!(
+                                        "only {} and {} are supported as assertion",
+                                        ExprObject::display(),
+                                        ExprTuple::display(),
+                                    ),
+                                ));
+                            }
+                        };
                     }
                     .into()
                 } else {
@@ -126,6 +139,7 @@ impl Compilable for Expr {
             Self::Lit(t) => t.compile_value(ctx),
             Self::Object(t) => t.compile_value(ctx),
             Self::Paren(t) => t.compile_value(ctx),
+            Self::Tuple(t) => t.compile_value(ctx),
             Self::Unary(t) => t.compile_value(ctx),
         }
     }
@@ -138,6 +152,7 @@ impl Compilable for Expr {
             Self::Lit(t) => t.compile_assertion(ctx, field),
             Self::Object(t) => t.compile_assertion(ctx, field),
             Self::Paren(t) => t.compile_assertion(ctx, field),
+            Self::Tuple(t) => t.compile_assertion(ctx, field),
             Self::Unary(t) => t.compile_assertion(ctx, field),
         }
     }
@@ -322,29 +337,6 @@ impl ExprFuncall {
     {
         T::unpack(self.params.span(), self.params.items())
     }
-
-    // assert(body)
-    // assert(status, body)
-    fn call_assert(&self, ctx: &Context) -> Result<Mapping> {
-        let (status, body) = self.unpack_params::<(&Expr, Option<&Expr>)>()?;
-        if let Some(body) = body {
-            let status = match status {
-                Expr::Lit(ExprLit::Integer(i)) => i,
-                _ => return Err(Error::new(status.span(), "`status` should be an integer")),
-            };
-            let body = match body {
-                Expr::Object(obj) => obj,
-                _ => return Err(Error::new(body.span(), "`body` should be an object")),
-            };
-            ctx.compile_brief(Some(status), body)
-        } else {
-            let body = match status {
-                Expr::Object(obj) => obj,
-                _ => return Err(Error::new(status.span(), "`body` should be an object")),
-            };
-            ctx.compile_brief(None, body)
-        }
-    }
 }
 
 impl Compilable for ExprFuncall {
@@ -381,5 +373,35 @@ impl Compilable for ExprParen {
 
     fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
         self.elem.compile_assertion(ctx, field)
+    }
+}
+
+impl ExprTuple {
+    // assert: (status, body)
+    fn compile_as_brief_dsl(&self, ctx: &Context) -> Result<Mapping> {
+        let (status, body) = <(&Expr, Option<&Expr>)>::unpack(self.span(), self.elems.items())?;
+        if let Some(body) = body {
+            let status = match status {
+                Expr::Lit(ExprLit::Integer(i)) => i,
+                _ => return Err(Error::new(status.span(), "`status` should be an integer")),
+            };
+            let body = match body {
+                Expr::Object(obj) => obj,
+                _ => return Err(Error::new(body.span(), "`body` should be an object")),
+            };
+            ctx.compile_brief(Some(status), body)
+        } else {
+            let body = match status {
+                Expr::Object(obj) => obj,
+                _ => return Err(Error::new(status.span(), "`body` should be an object")),
+            };
+            ctx.compile_brief(None, body)
+        }
+    }
+}
+
+impl Compilable for ExprTuple {
+    fn display() -> &'static str {
+        "tuple-expression"
     }
 }

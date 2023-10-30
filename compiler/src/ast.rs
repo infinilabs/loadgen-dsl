@@ -28,13 +28,40 @@ where
 
 #[derive(Clone, Debug)]
 pub struct Terminated<T, P> {
-    pub(crate) elems: Vec<(T, P)>,
+    pub(crate) pairs: Vec<(T, P)>,
     pub(crate) trailing: Option<Box<T>>,
 }
 
 impl<T, P> Terminated<T, P> {
+    pub fn new() -> Self {
+        Self {
+            pairs: Vec::new(),
+            trailing: None,
+        }
+    }
+
+    pub(crate) fn parse_rest(&mut self, parser: &mut Parser) -> Result<()>
+    where
+        T: Parse,
+        P: Token,
+    {
+        debug_assert!(self.trailing.is_none());
+        loop {
+            if parser.is_eot() {
+                break;
+            }
+            let val = parser.parse()?;
+            if parser.is_eot() {
+                self.trailing = Some(Box::new(val));
+                break;
+            }
+            self.pairs.push((val, parser.parse()?));
+        }
+        Ok(())
+    }
+
     pub fn items(&self) -> impl Iterator<Item = &T> {
-        self.elems
+        self.pairs
             .iter()
             .map(|(t, _)| t)
             .chain(self.trailing.as_deref().into_iter())
@@ -57,15 +84,18 @@ where
     P: Spanned,
 {
     fn span(&self) -> Span {
-        let Some(start) = self.elems.first() else {
-            debug_assert!(self.trailing.is_none());
-            return Span::dummy();
+        let Some(start) = self.pairs.first() else {
+            if let Some(ref trailing) = self.trailing {
+                return trailing.span();
+            } else {
+                return Span::dummy();
+            }
         };
         let end = self
             .trailing
             .as_deref()
             .map(T::span)
-            .or_else(|| self.elems.last().map(|(_, p)| p.span()))
+            .or_else(|| self.pairs.last().map(|(_, p)| p.span()))
             .unwrap();
         start.0.span().join(end)
     }
@@ -276,6 +306,7 @@ define_ast_enum!(
         Lit(ExprLit),
         Object(ExprObject),
         Paren(ExprParen),
+        Tuple(ExprTuple),
         Unary(ExprUnary),
     }
 );
@@ -296,21 +327,51 @@ impl Expr {
     }
 
     fn parse_one(parser: &mut Parser) -> Result<Self> {
-        if parser.peek(ExprLit::peek()) {
-            parser.parse().map(Self::Lit)
-        } else if parser.peek(Bracket) {
+        if parser.peek(Bracket) {
             parser.parse().map(Self::Array)
         } else if parser.peek(Brace) {
             parser.parse().map(Self::Object)
+        } else if parser.peek(Paren) {
+            Self::parse_paren_or_tuple(parser)
         } else if parser.peek(UnaryOp::peek()) {
             parser.parse().map(Self::Unary)
+        } else if parser.peek(ExprLit::peek()) {
+            parser.parse().map(Self::Lit)
         } else if parser.peek(Ident) {
             parser.parse().map(Self::Funcall)
-        } else if parser.peek(Paren) {
-            parser.parse().map(Self::Paren)
         } else {
             return parser.unexpected_token(Self::peek());
         }
+    }
+
+    fn parse_paren_or_tuple(parser: &mut Parser) -> Result<Self> {
+        let mut parser = parser.delimited()?;
+        if parser.is_eot() {
+            return Ok(ExprTuple {
+                paren_token: parser.finish()?,
+                elems: Terminated::new(),
+            }
+            .into());
+        }
+        let elem = parser.parse::<Expr>()?;
+        Ok(if let Some(comma) = parser.parse::<Option<Comma>>()? {
+            let mut elems = Terminated {
+                pairs: vec![(elem, comma)],
+                trailing: None,
+            };
+            elems.parse_rest(&mut parser)?;
+            ExprTuple {
+                elems,
+                paren_token: parser.finish()?,
+            }
+            .into()
+        } else {
+            ExprParen {
+                elem: Box::new(elem),
+                paren_token: parser.finish()?,
+            }
+            .into()
+        })
     }
 }
 
@@ -657,5 +718,30 @@ impl Parse for ExprParen {
     fn parse(parser: &mut Parser) -> Result<Self> {
         let (paren_token, elem) = parser.parse_delimited()?;
         Ok(Self { paren_token, elem })
+    }
+}
+
+define_ast_struct!(
+    #[span = paren_token]
+    pub struct ExprTuple {
+        paren_token: Paren,
+        elems: Terminated<Expr, Comma>,
+    }
+);
+
+impl Parse for ExprTuple {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        let (paren_token, elems) = parser.parse_delimited_with(|parser| {
+            let mut elems = Terminated::new();
+
+            if parser.is_eot() {
+                return Ok(elems);
+            }
+            elems.pairs.push((parser.parse()?, parser.parse()?));
+            elems.parse_rest(parser)?;
+
+            Ok(elems)
+        })?;
+        Ok(Self { paren_token, elems })
     }
 }

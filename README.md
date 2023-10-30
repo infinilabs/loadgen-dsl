@@ -52,15 +52,15 @@ expr1      ::= literal
              | object
              | funcall
              | prefixop expr1
-             | '(' expr ')'
+             | '(' exprlist ')'
+exprlist   ::= (expr (',' expr)* ','?)?
 object     ::= '{' fields '}'
 fields     ::= (pair (',' pair)* ','?)?
 pair       ::= path ':' expr
 path       ::= key ('.' key)*
 key        ::= name | string | integer
-array      ::= '[' params ']'
-funcall    ::= name '(' params ')'
-params     ::= (expr (',' expr)* ','?)?
+array      ::= '[' exprlist ']'
+funcall    ::= name '(' exprlist ')'
 literal    ::= null
              | boolean
              | integer

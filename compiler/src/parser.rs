@@ -3,7 +3,7 @@ use crate::{
     error::{Error, Result},
     lexer::{LexKind, LexResult, LexToken, Lexer},
 };
-use std::{borrow::Cow, fmt};
+use std::{borrow::Cow, fmt, ops};
 
 pub(crate) trait Parse: Sized {
     fn parse(parser: &mut Parser) -> Result<Self>;
@@ -189,12 +189,28 @@ impl<'a> Parser<'a> {
         T: Parse,
         D: Delimiter,
     {
-        let mut delim = self.parse::<D>()?;
-        let prev = self.delim.replace(D::RIGHT);
-        let content = self.parse()?;
-        self.delim = prev;
-        delim.combine(self.expect_token(D::RIGHT)?);
-        Ok((delim, content))
+        self.parse_delimited_with(T::parse)
+    }
+
+    pub fn parse_delimited_with<T, D, F>(&mut self, f: F) -> Result<(D, T)>
+    where
+        F: FnOnce(&mut Self) -> Result<T>,
+        D: Delimiter,
+    {
+        let mut parser = self.delimited()?;
+        let content = f(&mut parser)?;
+        Ok((parser.finish()?, content))
+    }
+
+    pub fn delimited<D>(&mut self) -> Result<DelimitedParser<'a, '_, D>>
+    where
+        D: Delimiter,
+    {
+        Ok(DelimitedParser {
+            delim: self.parse()?,
+            prev_delim: self.delim.replace(D::RIGHT),
+            parser: self,
+        })
     }
 
     pub fn parse_terminated<T, P>(&mut self) -> Result<Terminated<T, P>>
@@ -202,20 +218,9 @@ impl<'a> Parser<'a> {
         T: Parse,
         P: Token,
     {
-        let mut elems = Vec::new();
-        let mut trailing = None;
-        loop {
-            if self.is_eot() {
-                break;
-            }
-            let val = self.parse()?;
-            if self.is_eot() {
-                trailing = Some(Box::new(val));
-                break;
-            }
-            elems.push((val, self.parse()?));
-        }
-        Ok(Terminated { elems, trailing })
+        let mut new = Terminated::new();
+        new.parse_rest(self)?;
+        Ok(new)
     }
 
     pub fn parse_seperated<T, P>(&mut self) -> Result<Terminated<T, P>>
@@ -233,7 +238,7 @@ impl<'a> Parser<'a> {
             item = self.parse()?;
         }
         Ok(Terminated {
-            elems,
+            pairs: elems,
             trailing: Some(Box::new(item)),
         })
     }
@@ -267,6 +272,43 @@ impl<'a> Cursor<'a> {
             .1)
             .0
             .kind
+    }
+}
+
+pub(crate) struct DelimitedParser<'a, 'b, D> {
+    parser: &'b mut Parser<'a>,
+    delim: D,
+    prev_delim: Option<LexKind>,
+}
+
+impl<D> DelimitedParser<'_, '_, D>
+where
+    D: Delimiter,
+{
+    pub fn finish(self) -> Result<D> {
+        let Self {
+            parser,
+            mut delim,
+            prev_delim,
+        } = self;
+        parser.delim = prev_delim;
+        delim.combine(parser.expect_token(D::RIGHT)?);
+        std::mem::forget(parser);
+        Ok(delim)
+    }
+}
+
+impl<'a, D> ops::Deref for DelimitedParser<'a, '_, D> {
+    type Target = Parser<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.parser
+    }
+}
+
+impl<'a, D> ops::DerefMut for DelimitedParser<'a, '_, D> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.parser
     }
 }
 
