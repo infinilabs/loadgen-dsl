@@ -32,7 +32,7 @@ pub(crate) struct Context {}
 impl Context {
     fn compile_brief(&self, status: Option<&LitInteger>, body: &ExprObject) -> Result<Mapping> {
         let body = body.compile_assertion(self, "_ctx.response.body_json")?;
-        let assertion = if let Some(status) = status.as_ref() {
+        Ok(if let Some(status) = status.as_ref() {
             let status = yaml!({
                 ["equals"]: {
                     ["_ctx.response.status"]: status.value()
@@ -41,8 +41,7 @@ impl Context {
             yaml!({ ["and"]: [status, body] })
         } else {
             body
-        };
-        Ok(yaml!({ ["assert"]: assertion }))
+        })
     }
 
     fn compile_full<'a>(
@@ -120,7 +119,9 @@ impl Compiler {
 
     pub fn compile(&self, ast: &Dsl) -> Result<Mapping> {
         match ast {
-            Dsl::Brief(ast) => self.context.compile_brief(ast.status.as_ref(), &ast.body),
+            Dsl::Brief(ast) => Ok(yaml!({
+                ["assert"]: self.context.compile_brief(ast.status.as_ref(), &ast.body)?,
+            })),
             Dsl::Full(ast) => self.context.compile_full(ast.fields.items()),
         }
     }
