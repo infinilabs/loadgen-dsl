@@ -1,11 +1,10 @@
-use std::borrow::Cow;
-
 use crate::{
     ast::*,
     error::{Error, Result},
     util::UnpackFrom,
 };
 use serde_yaml::{Mapping, Sequence, Value as Yaml};
+use std::borrow::Cow;
 
 pub(crate) trait Compilable: Spanned {
     fn display() -> &'static str;
