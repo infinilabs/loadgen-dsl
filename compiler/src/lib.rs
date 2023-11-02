@@ -37,20 +37,25 @@ fn _compile_requests(s: &str) -> Result<Yaml> {
         if matches!(kind, ReqKind::Req(_) | ReqKind::Eof) {
             if let Some(req) = curr_req.take() {
                 // A new request
-                let mut req = yaml!({
-                    ["request"]: {
+                let req_params = yaml!({
                         ["method"]: req.method,
                         ["url"]: req.url,
                         ["body"]: req.body,
-                    },
                 });
-                if !assertion.is_empty() {
-                    match compile(&assertion) {
-                        Ok(t) => req.extend(t),
-                        Err(e) => return Err(e.with_source(assertion)),
-                    }
+                let req = if !assertion.is_empty() {
+                    let mut req = compile(&assertion).map_err(|e| e.with_source(&assertion))?;
                     assertion.clear();
-                }
+                    match req
+                        .entry("request".into())
+                        .or_insert_with(|| Mapping::new().into())
+                    {
+                        Yaml::Mapping(req) => req.extend(req_params),
+                        others => *others = req_params.into(),
+                    }
+                    req
+                } else {
+                    yaml!({ ["request"]: req_params })
+                };
                 reqs.push(req.into());
             } else {
                 // Global options

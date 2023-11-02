@@ -387,6 +387,7 @@ impl Compilable for ExprParen {
 impl ExprTuple {
     // assert: (status, body)
     fn compile_as_brief_dsl(&self, ctx: &Context) -> Result<Mapping> {
+        // TODO: make status optional
         let (status, body) = <(&Expr, Option<&Expr>)>::unpack(self.span(), self.elems.items())?;
         if let Some(body) = body {
             let status = match status {

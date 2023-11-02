@@ -26,6 +26,7 @@ where
     }
 }
 
+// TODO: make comma optional
 #[derive(Clone, Debug)]
 pub struct Terminated<T, P> {
     pub(crate) pairs: Vec<(T, P)>,
