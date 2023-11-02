@@ -260,16 +260,19 @@ define_ast_struct!(
     #[span = _span]
     pub struct DslBrief {
         status: Option<LitInteger>,
-        body: ExprObject,
+        body: Option<ExprObject>,
     }
 );
 
 impl DslBrief {
     fn _span(&self) -> Span {
-        if let Some(status) = self.status.as_ref() {
-            status.span().join(self.body.span())
-        } else {
-            self.body.span()
+        match (
+            self.status.as_ref().map(<_>::span),
+            self.body.as_ref().map(<_>::span),
+        ) {
+            (Some(start), Some(end)) => start.join(end),
+            (Some(span), _) | (_, Some(span)) => span,
+            (None, None) => Span::dummy(),
         }
     }
 }
@@ -278,7 +281,11 @@ impl Parse for DslBrief {
     fn parse(parser: &mut Parser) -> Result<Self> {
         Ok(Self {
             status: parser.parse()?,
-            body: parser.parse()?,
+            body: if parser.peek(Brace) {
+                Some(parser.parse()?)
+            } else {
+                None
+            },
         })
     }
 }
@@ -340,7 +347,7 @@ impl Expr {
         } else if parser.peek(Ident) {
             parser.parse().map(Self::Funcall)
         } else {
-            return parser.unexpected_token(Self::peek());
+            parser.unexpected_token(Self::peek())
         }
     }
 

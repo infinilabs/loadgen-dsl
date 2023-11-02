@@ -30,17 +30,25 @@ pub(crate) trait Compilable: Spanned {
 pub(crate) struct Context {}
 
 impl Context {
-    fn compile_brief(&self, status: Option<&LitInteger>, body: &ExprObject) -> Result<Mapping> {
-        let body = body.compile_assertion(self, "_ctx.response.body_json")?;
-        Ok(if let Some(status) = status.as_ref() {
-            let status = yaml!({
+    fn compile_brief(
+        &self,
+        status: Option<&LitInteger>,
+        body: Option<&ExprObject>,
+    ) -> Result<Mapping> {
+        let status = status.map(|status| {
+            yaml!({
                 ["equals"]: {
                     ["_ctx.response.status"]: status.value()
                 }
-            });
-            yaml!({ ["and"]: [status, body] })
-        } else {
-            body
+            })
+        });
+        let body = body
+            .map(|body| body.compile_assertion(self, "_ctx.response.body_json"))
+            .transpose()?;
+        Ok(match (status, body) {
+            (Some(status), Some(body)) => yaml!({ ["and"]: [status, body] }),
+            (Some(r), _) | (_, Some(r)) => r,
+            (None, None) => Mapping::new(),
         })
     }
 
@@ -120,7 +128,7 @@ impl Compiler {
     pub fn compile(&self, ast: &Dsl) -> Result<Mapping> {
         match ast {
             Dsl::Brief(ast) => Ok(yaml!({
-                ["assert"]: self.context.compile_brief(ast.status.as_ref(), &ast.body)?,
+                ["assert"]: self.context.compile_brief(ast.status.as_ref(), ast.body.as_ref())?,
             })),
             Dsl::Full(ast) => self.context.compile_full(ast.fields.items()),
         }
@@ -275,7 +283,7 @@ impl ExprUnary {
                 .unwrap()),
             _ => Err(Error::new(
                 self.span(),
-                format!("can only apply negation to numbers"),
+                "can only apply negation to numbers",
             )),
         }
     }
@@ -390,13 +398,13 @@ impl ExprTuple {
                 Expr::Object(obj) => obj,
                 _ => return Err(Error::new(body.span(), "`body` should be an object")),
             };
-            ctx.compile_brief(Some(status), body)
+            ctx.compile_brief(Some(status), Some(body))
         } else {
             let body = match status {
                 Expr::Object(obj) => obj,
                 _ => return Err(Error::new(status.span(), "`body` should be an object")),
             };
-            ctx.compile_brief(None, body)
+            ctx.compile_brief(None, Some(body))
         }
     }
 }
