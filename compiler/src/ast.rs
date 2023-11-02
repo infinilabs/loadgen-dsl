@@ -256,6 +256,11 @@ impl Parse for Dsl {
             parser.parse().map(Self::Brief)
         } else if parser.peek(Ident) || parser.peek(LitString) {
             parser.parse().map(Self::Full)
+        } else if parser.is_eot() {
+            Ok(Self::Brief(DslBrief {
+                status: None,
+                body: None,
+            }))
         } else {
             parser.unexpected_token(Self::peek())
         }
