@@ -27,6 +27,6 @@ extern "C" fn _init() {
 }
 
 fn compile(input: &str) -> Result<String> {
-    let output = loadgen_dsl_compiler::compile_requests(&input)?;
+    let output = loadgen_dsl_compiler::compile_requests(input)?;
     Ok(serde_yaml::to_string(&output).unwrap())
 }

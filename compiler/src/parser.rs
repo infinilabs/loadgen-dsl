@@ -293,7 +293,6 @@ where
         } = self;
         parser.delim = prev_delim;
         delim.combine(parser.expect_token(D::RIGHT)?);
-        std::mem::forget(parser);
         Ok(delim)
     }
 }

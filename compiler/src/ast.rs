@@ -64,7 +64,13 @@ impl<T, P> Terminated<T, P> {
         self.pairs
             .iter()
             .map(|(t, _)| t)
-            .chain(self.trailing.as_deref().into_iter())
+            .chain(self.trailing.as_deref())
+    }
+}
+
+impl<T, P> Default for Terminated<T, P> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

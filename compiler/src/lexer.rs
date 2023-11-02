@@ -323,7 +323,7 @@ impl<'a> Lexer<'a> {
         if self.buf.is_empty() {
             // Ignore the backslash
             let end = self.cur.pos() - 2;
-            self.buf.push_str(&self.cur.fetch(self.cur.start..end));
+            self.buf.push_str(self.cur.fetch(self.cur.start..end));
         }
         self.buf_push(ch);
     }

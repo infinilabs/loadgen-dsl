@@ -8,7 +8,7 @@ fn main() -> miette::Result<()> {
     .unwrap();
 
     let path = env::args().nth(1).expect("missing input path");
-    let input = std::fs::read_to_string(&path).expect("io error");
+    let input = std::fs::read_to_string(path).expect("io error");
     let output = loadgen_dsl_compiler::compile_requests(&input)?;
     println!("{}", serde_yaml::to_string(&output).unwrap());
     Ok(())
