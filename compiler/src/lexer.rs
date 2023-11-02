@@ -17,7 +17,7 @@ pub struct Span {
 }
 
 impl Span {
-    pub(crate) fn dummy() -> Self {
+    pub(crate) const fn dummy() -> Self {
         Self {
             start: u32::MAX,
             end: u32::MAX,

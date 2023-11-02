@@ -1,8 +1,7 @@
-use miette::{Diagnostic, LabeledSpan, SourceSpan};
-use thiserror::Error;
-
 use crate::{lexer::Span, parser::Peek};
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use std::fmt;
+use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -34,11 +33,12 @@ impl Error {
         }
     }
 
-    pub(crate) fn with_source(self, source: String) -> Self {
-        Self {
-            source_code: Some(source),
-            ..self
-        }
+    pub(crate) fn with_source<S>(mut self, source: S) -> Self
+    where
+        S: Into<String>,
+    {
+        self.source_code.get_or_insert_with(|| source.into());
+        self
     }
 
     pub(crate) fn combine(&mut self, other: Error) {
@@ -59,8 +59,21 @@ impl Diagnostic for Error {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let Some(source_code) = self.source_code.as_deref() else {
+            return None;
+        };
         Some(Box::new(self.msgs.iter().map(|msg| {
-            LabeledSpan::new_with_span(Some(msg.desc.clone().into()), msg.span)
+            let source_len = source_code.len() as u32;
+            let span = if msg.span == Span::dummy() {
+                // For dummy span, returns the entire source code.
+                Span::new(0, source_len)
+            } else if msg.span.start >= source_len {
+                // For EOF span, returns the last byte.
+                Span::new(source_len - 1, source_len)
+            } else {
+                msg.span
+            };
+            LabeledSpan::new_with_span(Some(msg.desc.clone().into()), span)
         })))
     }
 }

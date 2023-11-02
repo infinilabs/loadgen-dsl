@@ -22,11 +22,7 @@ fn compile_full(s: &str) -> Result<Mapping> {
 }
 
 pub fn compile_requests(s: &str) -> Result<Yaml> {
-    match _compile_requests(s) {
-        Ok(t) => Ok(t),
-        Err(e) if e.source_code.is_none() => Err(e.with_source(s.to_owned())),
-        Err(e) => Err(e),
-    }
+    _compile_requests(s).map_err(|e| e.with_source(s))
 }
 
 fn _compile_requests(s: &str) -> Result<Yaml> {
