@@ -12,12 +12,12 @@ use lexer::{Req, ReqKind};
 use serde_yaml::{Mapping, Sequence, Value as Yaml};
 
 pub fn compile(s: &str) -> Result<Mapping> {
-    let ast = parser::Parser::new(s).parse::<ast::Dsl>()?;
+    let ast = parser::Parser::new(s).parse_finished::<ast::Dsl>()?;
     compiler::Compiler::new().compile(&ast)
 }
 
 fn compile_full(s: &str) -> Result<Mapping> {
-    let ast = parser::Parser::new(s).parse::<ast::DslFull>()?;
+    let ast = parser::Parser::new(s).parse_finished::<ast::DslFull>()?;
     compiler::Compiler::new().compile(&ast::Dsl::Full(ast))
 }
 

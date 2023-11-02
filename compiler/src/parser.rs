@@ -242,6 +242,19 @@ impl<'a> Parser<'a> {
             trailing: Some(Box::new(item)),
         })
     }
+
+    pub fn parse_finished<T>(&mut self) -> Result<T>
+    where
+        T: Parse,
+    {
+        let t = self.parse()?;
+        self.finish()?;
+        Ok(t)
+    }
+
+    pub fn finish(&mut self) -> Result<()> {
+        self.expect_token(LexKind::Eof).map(|_| ())
+    }
 }
 
 pub(crate) struct Cursor<'a> {
