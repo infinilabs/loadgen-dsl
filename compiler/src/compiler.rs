@@ -217,7 +217,7 @@ impl Compilable for ExprArray {
             .items()
             .enumerate()
             .map(|(i, elem)| {
-                elem.compile_assertion(ctx, &format!("{field}.[{i}]"))
+                elem.compile_assertion(ctx, &format!("{field}.{i}"))
                     .map(Yaml::from)
             })
             .collect::<Result<Sequence>>()?;
