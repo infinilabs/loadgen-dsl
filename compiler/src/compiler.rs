@@ -9,7 +9,7 @@ use std::borrow::Cow;
 pub(crate) trait Compilable: Spanned {
     fn display() -> &'static str;
 
-    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
         let _ = ctx;
         Err(Error::new(
             self.span(),
@@ -17,7 +17,7 @@ pub(crate) trait Compilable: Spanned {
         ))
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         let _ = (ctx, field);
         Err(Error::new(
             self.span(),
@@ -30,7 +30,7 @@ pub(crate) struct Context {}
 
 impl Context {
     fn compile_brief(
-        &self,
+        &mut self,
         status: Option<&LitInteger>,
         body: Option<&ExprObject>,
     ) -> Result<Mapping> {
@@ -52,7 +52,7 @@ impl Context {
     }
 
     fn compile_full<'a>(
-        &self,
+        &mut self,
         fields: impl 'a + IntoIterator<Item = &'a Field>,
     ) -> Result<Mapping> {
         fields
@@ -93,7 +93,7 @@ impl Context {
     }
 
     fn compile_fields_in<'a>(
-        &self,
+        &mut self,
         fields: impl 'a + IntoIterator<Item = &'a Field>,
         root: Option<&str>,
     ) -> Result<Mapping> {
@@ -124,7 +124,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&self, ast: &Dsl) -> Result<Mapping> {
+    pub fn compile(&mut self, ast: &Dsl) -> Result<Mapping> {
         match ast {
             Dsl::Brief(ast) => Ok(yaml!({
                 ["assert"]: self.context.compile_brief(ast.status.as_ref(), ast.body.as_ref())?,
@@ -139,7 +139,7 @@ impl Compilable for Expr {
         "expression"
     }
 
-    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
         match self {
             Self::Array(t) => t.compile_value(ctx),
             Self::Binary(t) => t.compile_value(ctx),
@@ -152,7 +152,7 @@ impl Compilable for Expr {
         }
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         match self {
             Self::Array(t) => t.compile_assertion(ctx, field),
             Self::Binary(t) => t.compile_assertion(ctx, field),
@@ -171,7 +171,7 @@ impl Compilable for ExprLit {
         "literal-expression"
     }
 
-    fn compile_value(&self, _ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, _ctx: &mut Context) -> Result<Yaml> {
         Ok(match self {
             Self::Bool(t) => Yaml::from(t.value()),
             Self::Float(t) => Yaml::from(t.value()),
@@ -182,7 +182,7 @@ impl Compilable for ExprLit {
         })
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         Ok(match self {
             Self::Regexp(_) => yaml!({
                 ["regexp"]: {
@@ -203,7 +203,7 @@ impl Compilable for ExprArray {
         "array-expression"
     }
 
-    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
         self.elems
             .items()
             .map(|elem| elem.compile_value(ctx).map(Yaml::from))
@@ -211,7 +211,7 @@ impl Compilable for ExprArray {
             .map(Yaml::from)
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         let assertions = self
             .elems
             .items()
@@ -230,7 +230,7 @@ impl Compilable for ExprObject {
         "object-expression"
     }
 
-    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
         self.fields
             .items()
             .map(|f| {
@@ -242,7 +242,7 @@ impl Compilable for ExprObject {
             .map(Yaml::from)
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         ctx.compile_fields_in(self.fields.items(), Some(field))
     }
 }
@@ -273,7 +273,7 @@ impl Path {
 }
 
 impl ExprUnary {
-    fn neg(&self, ctx: &Context) -> Result<Yaml> {
+    fn neg(&self, ctx: &mut Context) -> Result<Yaml> {
         match self.elem.compile_value(ctx)? {
             Yaml::Number(n) => Ok(n
                 .as_i64()
@@ -293,14 +293,14 @@ impl Compilable for ExprUnary {
         "unary-expression"
     }
 
-    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
         match self.op {
             UnaryOp::Neg(_) => self.neg(ctx),
             _ => Err(Error::new(self.span(), "cannot use assertion as value")),
         }
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         Ok(match self.op {
             UnaryOp::Eq(_) => yaml!({ ["equals"]: self.elem.compile_value(ctx)? }),
             UnaryOp::Neg(_) => yaml!({ ["equals"]: self.neg(ctx)? }),
@@ -324,7 +324,7 @@ impl Compilable for ExprBinary {
         "binary-expression"
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         let op = match self.op {
             BinaryOp::And(_) => "and",
             BinaryOp::Or(_) => "or",
@@ -352,14 +352,14 @@ impl Compilable for ExprFuncall {
         "function-call-expression"
     }
 
-    fn compile_value(&self, _ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, _ctx: &mut Context) -> Result<Yaml> {
         Err(Error::new(
             self.span(),
             format!("{} is not yet supported as value", Self::display()),
         ))
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         let arg = self.unpack_params::<&Expr>()?;
         let f = self.ident.value();
         Ok(yaml!({
@@ -375,18 +375,18 @@ impl Compilable for ExprParen {
         Expr::display()
     }
 
-    fn compile_value(&self, ctx: &Context) -> Result<Yaml> {
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
         self.elem.compile_value(ctx)
     }
 
-    fn compile_assertion(&self, ctx: &Context, field: &str) -> Result<Mapping> {
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
         self.elem.compile_assertion(ctx, field)
     }
 }
 
 impl ExprTuple {
     // assert: (status, body)
-    fn compile_as_brief_dsl(&self, ctx: &Context) -> Result<Mapping> {
+    fn compile_as_brief_dsl(&self, ctx: &mut Context) -> Result<Mapping> {
         // TODO: make status optional
         let (status, body) = <(&Expr, Option<&Expr>)>::unpack(self.span(), self.elems.items())?;
         if let Some(body) = body {
