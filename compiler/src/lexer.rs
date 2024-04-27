@@ -469,11 +469,11 @@ impl<'a> ReqParser<'a> {
                     self.cur.begin();
                     self.cur.skip_line();
                     let url = self.cur.source();
-                    // Remove trailing newline.
-                    let url = &url[..url.len() - 1];
-                    if url.is_empty() {
+                    if url.len() < 2 {
                         return Err(Error::new(self.cur.span(), "missing URL"));
                     }
+                    // Remove trailing newline.
+                    let url = &url[..url.len() - 1];
                     // Parse body.
                     self.cur.begin();
                     loop {
