@@ -248,6 +248,13 @@ macro_rules! define_ast_struct {
 }
 
 define_ast_enum!(
+    pub enum ResponseBody {
+        Object(ExprObject),
+        Array(ExprArray),
+    }
+);
+
+define_ast_enum!(
     pub enum Dsl {
         Brief(DslBrief),
         Full(DslFull),
@@ -281,7 +288,7 @@ define_ast_struct!(
     #[span = _span]
     pub struct DslBrief {
         status: Option<LitInteger>,
-        body: Option<ExprObject>,
+        body: Option<ResponseBody>,
     }
 );
 
@@ -300,14 +307,16 @@ impl DslBrief {
 
 impl Parse for DslBrief {
     fn parse(parser: &mut Parser) -> Result<Self> {
-        Ok(Self {
-            status: parser.parse()?,
-            body: if parser.peek(Brace) {
-                Some(parser.parse()?)
-            } else {
-                None
-            },
-        })
+        let status = parser.parse()?;
+        let body = if parser.peek(Brace) {
+            Some(ResponseBody::Object(parser.parse::<ExprObject>()?))
+        } else if parser.peek(Bracket) {
+            Some(ResponseBody::Array(parser.parse::<ExprArray>()?))
+        } else {
+            None
+        };
+
+        Ok(Self { status, body })
     }
 }
 
