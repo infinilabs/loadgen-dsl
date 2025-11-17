@@ -41,7 +41,7 @@ impl Context {
     fn compile_brief(
         &mut self,
         status: Option<&LitInteger>,
-        body: Option<&ExprObject>,
+        body: Option<&ResponseBody>,
     ) -> Result<Mapping> {
         let status = status.map(|status| {
             yaml!({
@@ -53,6 +53,7 @@ impl Context {
         let body = body
             .map(|body| body.compile_assertion(self, "_ctx.response.body_json"))
             .transpose()?;
+
         Ok(match (status, body) {
             (Some(status), Some(body)) => yaml!({ ["and"]: [status, body] }),
             (Some(r), _) | (_, Some(r)) => r,
@@ -256,8 +257,28 @@ impl Compilable for ExprObject {
     }
 }
 
+impl Compilable for ResponseBody {
+    fn display() -> &'static str {
+        "response body: array-expression or object-expression"
+    }
+
+    fn compile_value(&self, ctx: &mut Context) -> Result<Yaml> {
+        match self {
+            Self::Array(inner) => inner.compile_value(ctx),
+            Self::Object(inner) => inner.compile_value(ctx),
+        }
+    }
+
+    fn compile_assertion(&self, ctx: &mut Context, field: &str) -> Result<Mapping> {
+        match self {
+            Self::Array(inner) => inner.compile_assertion(ctx, field),
+            Self::Object(inner) => inner.compile_assertion(ctx, field),
+        }
+    }
+}
+
 impl Key {
-    fn to_field(&self) -> Cow<str> {
+    fn to_field(&self) -> Cow<'_, str> {
         match self {
             Self::Array(t) => Cow::Owned(t.value().to_string()),
             Self::Ident(t) => Cow::Borrowed(t.value()),
@@ -404,16 +425,28 @@ impl ExprTuple {
                 _ => return Err(Error::new(status.span(), "`status` should be an integer")),
             };
             let body = match body {
-                Expr::Object(obj) => obj,
-                _ => return Err(Error::new(body.span(), "`body` should be an object")),
+                Expr::Object(obj) => ResponseBody::Object(obj.clone()),
+                Expr::Array(arr) => ResponseBody::Array(arr.clone()),
+                _ => {
+                    return Err(Error::new(
+                        body.span(),
+                        "`body` should be either object or an array",
+                    ))
+                }
             };
-            ctx.compile_brief(Some(status), Some(body))
+            ctx.compile_brief(Some(status), Some(&body))
         } else {
             let body = match status {
-                Expr::Object(obj) => obj,
-                _ => return Err(Error::new(status.span(), "`body` should be an object")),
+                Expr::Object(obj) => ResponseBody::Object(obj.clone()),
+                Expr::Array(arr) => ResponseBody::Array(arr.clone()),
+                _ => {
+                    return Err(Error::new(
+                        status.span(),
+                        "`body` should be either object or an array",
+                    ))
+                }
             };
-            ctx.compile_brief(None, Some(body))
+            ctx.compile_brief(None, Some(&body))
         }
     }
 }
