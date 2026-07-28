@@ -124,6 +124,16 @@ impl<'a> Parser<'a> {
         self.cur.source()
     }
 
+    /// Peek the LexKind of the next token (without consuming it).
+    pub fn next_kind(&mut self) -> LexKind {
+        self.cur.next_kind()
+    }
+
+    /// Peek the LexKind of the current token.
+    pub fn cur_kind(&self) -> LexKind {
+        self.cur.kind()
+    }
+
     /// Parses the next 2 joint tokens.
     pub fn parse_token2(&mut self) -> Result<(LexToken, LexToken)> {
         let cur = &mut self.cur;

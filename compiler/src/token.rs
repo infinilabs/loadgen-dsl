@@ -97,25 +97,98 @@ macro_rules! define_token {
 
 }
 
-define_token!(
-    #[display = "and"]
-    pub struct And;
-);
+// And matches both the keyword `and` and the `&&` symbol.
+#[derive(Clone, Copy, Debug)]
+pub struct And {
+    span: Span,
+}
 
-define_token!(
-    #[display = "or"]
-    pub struct Or;
-);
+impl_extra!(pub And);
+
+impl Token for And {
+    fn display() -> &'static str { "and" }
+    fn peek(cur: &mut Cursor) -> bool {
+        (cur.kind() == LexKind::Ident && cur.source() == "and")
+            || cur.kind() == LexKind::And
+    }
+}
+
+impl Parse for And {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if parser.peek(And) {
+            // `&&` is two And tokens → consume both.
+            if parser.cur_kind() == LexKind::And && parser.next_kind() == LexKind::And {
+                let (t1, t2) = parser.parse_token2()?;
+                Ok(Self { span: t1.span.join(t2.span) })
+            } else {
+                Ok(Self { span: parser.parse_token()?.span })
+            }
+        } else { parser.unexpected_token(And) }
+    }
+}
+
+// Or matches both the keyword `or` and the `||` symbol.
+#[derive(Clone, Copy, Debug)]
+pub struct Or {
+    span: Span,
+}
+
+impl_extra!(pub Or);
+
+impl Token for Or {
+    fn display() -> &'static str { "or" }
+    fn peek(cur: &mut Cursor) -> bool {
+        (cur.kind() == LexKind::Ident && cur.source() == "or")
+            || cur.kind() == LexKind::Or
+    }
+}
+
+impl Parse for Or {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if parser.peek(Or) {
+            // `||` is two Or tokens → consume both.
+            if parser.cur_kind() == LexKind::Or && parser.next_kind() == LexKind::Or {
+                let (t1, t2) = parser.parse_token2()?;
+                Ok(Self { span: t1.span.join(t2.span) })
+            } else {
+                Ok(Self { span: parser.parse_token()?.span })
+            }
+        } else { parser.unexpected_token(Or) }
+    }
+}
 
 define_token!(
     #[display = "null"]
     pub struct Null;
 );
 
-define_token!(
-    #[display = "not"]
-    pub struct Not;
-);
+// Not matches both the keyword `not` and the `!` symbol (Bang).
+#[derive(Clone, Copy, Debug)]
+pub struct Not {
+    span: Span,
+}
+
+impl_extra!(pub Not);
+
+impl Token for Not {
+    fn display() -> &'static str {
+        "not"
+    }
+    fn peek(cur: &mut Cursor) -> bool {
+        (cur.kind() == LexKind::Ident && cur.source() == "not")
+            || cur.kind() == LexKind::Bang
+    }
+}
+
+impl Parse for Not {
+    fn parse(parser: &mut Parser) -> Result<Self> {
+        if parser.peek(Not) {
+            Ok(Self { span: parser.parse_token()?.span })
+        } else {
+            parser.unexpected_token(Not)
+        }
+    }
+}
 
 define_token!(
     #[symbol = BraceL]
